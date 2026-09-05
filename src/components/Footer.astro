@@ -1,0 +1,41 @@
+---
+import { FOOTER_SOCIALS } from '../data/nav';
+
+const year = new Date().getFullYear();
+---
+
+<footer class="border-t border-line bg-bg">
+  <div class="max-w-6xl mx-auto px-6 py-12">
+    <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+
+      <div>
+        <a href="/" class="font-mono text-accent font-medium group">
+          <span class="text-faint">&lt;</span>amit.singh<span class="text-faint">/&gt;</span>
+        </a>
+        <p class="text-xs text-faint mt-1 font-mono">Observability Architect · SRE · Platform Engineering · BITS Pilani M.Tech</p>
+      </div>
+
+      <div class="flex items-center gap-4">
+        {FOOTER_SOCIALS.map(({ label, href, icon }) => (
+          <a
+            href={href}
+            target={label === 'Email' ? undefined : '_blank'}
+            rel={label === 'Email' ? undefined : 'noopener noreferrer'}
+            aria-label={label}
+            class="text-dim hover:text-accent transition-colors duration-200"
+            set:html={icon}
+          />
+        ))}
+      </div>
+
+    </div>
+
+    <div class="mt-8 pt-6 border-t border-line flex flex-col md:flex-row items-center justify-between gap-2 text-xs text-faint font-mono">
+      <span>© {year} Amit Singh. Built with Astro + Tailwind.</span>
+      <span>
+        <span class="text-faint">// </span>
+        <a href="https://github.com/shipsolid" class="hover:text-muted transition-colors">source</a>
+      </span>
+    </div>
+  </div>
+</footer>

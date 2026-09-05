@@ -1,0 +1,151 @@
+---
+import type { NoteTreeNode } from '../lib/notes-tree';
+
+interface Props {
+  nodes: NoteTreeNode[];
+  depth?: number;
+  // Namespaces the collapse-state localStorage key. Only meaningful at the
+  // top-level call — recursion below doesn't need to re-pass it since the
+  // root wrapper (the only element that carries it) is written once here.
+  topicId?: string;
+}
+
+const { nodes, depth = 0, topicId = '' } = Astro.props;
+---
+
+<div data-topic-id={depth === 0 ? topicId : null} class="flex flex-col gap-1">
+  {nodes.map((node) => {
+    // A node with exactly one note and no sub-chapters IS that note — link
+    // straight to its page instead of an in-between listing. Anything with
+    // sub-chapters, or holding more than one note directly, expands instead.
+    const isExpandable = node.children.length > 0 || node.notes.length > 1;
+    const indent = depth > 0 ? `padding-left: ${1.5 + (depth - 1)}rem` : undefined;
+    const noteIndent = `padding-left: ${1.5 + depth * 0.75}rem`;
+
+    if (!isExpandable) {
+      const href = `/notes/${node.notes[0].id}`;
+      return depth === 0 ? (
+        <a
+          href={href}
+          class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-sm text-muted hover:text-ink hover:bg-surface-hover/50 transition group no-underline"
+        >
+          <span class="min-w-0 break-words group-hover:text-accent transition-colors">{node.label}</span>
+          <span class="shrink-0 text-xs font-mono text-faint group-hover:text-muted transition-colors">{node.count}</span>
+        </a>
+      ) : (
+        <a
+          href={href}
+          style={indent}
+          class="flex items-center justify-between gap-2 pr-3 py-1.5 rounded-lg text-xs text-faint hover:text-body hover:bg-surface-hover/30 transition no-underline group/sub"
+        >
+          <span class="flex items-start gap-1.5 min-w-0">
+            <span class="text-faint group-hover/sub:text-dim shrink-0">└</span>
+            <span class="break-words">{node.label}</span>
+          </span>
+          <span class="font-mono text-faint group-hover/sub:text-faint shrink-0">{node.count}</span>
+        </a>
+      );
+    }
+
+    return (
+      <details data-node-path={node.pathKey}>
+        <summary
+          style={indent}
+          class={
+            depth === 0
+              ? 'flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm text-muted hover:text-ink hover:bg-surface-hover/50 transition cursor-pointer'
+              : 'flex items-center gap-1.5 pr-3 py-1.5 rounded-lg text-xs text-faint hover:text-body hover:bg-surface-hover/30 transition cursor-pointer'
+          }
+        >
+          <span class="tree-chevron shrink-0 text-faint transition-transform duration-150" aria-hidden="true">▸</span>
+          {depth > 0 && <span class="text-faint shrink-0">└</span>}
+          <span class="flex-1 min-w-0 break-words">{node.label}</span>
+          <span class="text-xs font-mono text-faint shrink-0">{node.count}</span>
+        </summary>
+        <div class="mt-1 flex flex-col gap-1">
+          {node.notes.map((note) => (
+            <a
+              href={`/notes/${note.id}`}
+              style={noteIndent}
+              class="block pr-3 py-1.5 rounded-lg text-xs text-faint hover:text-body hover:bg-surface-hover/30 transition no-underline break-words"
+            >
+              {note.data.title}
+            </a>
+          ))}
+          {node.children.length > 0 && <Astro.self nodes={node.children} depth={depth + 1} />}
+        </div>
+      </details>
+    );
+  })}
+</div>
+
+<style>
+  summary {
+    list-style: none;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  details[open] > summary .tree-chevron {
+    transform: rotate(90deg);
+  }
+</style>
+
+<script>
+  // One [data-topic-id] wrapper per NotesSidebarTree top-level call on the
+  // page (TopicListing's own tree, and/or Note.astro's ChapterNavTree) —
+  // each restores/persists its own <details> independently under the same
+  // per-topic key, so expansion state carries over between the topic
+  // listing page and any note page under that topic.
+  document.querySelectorAll('[data-topic-id]').forEach((root) => {
+    const topicId = (root as HTMLElement).dataset.topicId;
+    if (!topicId) return;
+
+    const storageKey = `notes-tree-expanded:${topicId}`;
+    const detailsEls = [...root.querySelectorAll('details[data-node-path]')] as HTMLDetailsElement[];
+
+    let expanded = new Set<string>();
+    try {
+      expanded = new Set(JSON.parse(localStorage.getItem(storageKey) || '[]'));
+    } catch {
+      // Malformed/blocked storage — fall through with everything collapsed.
+    }
+
+    detailsEls.forEach((d) => {
+      const path = d.dataset.nodePath;
+      if (path && expanded.has(path)) d.open = true;
+
+      d.addEventListener('toggle', () => {
+        if (!path) return;
+        if (d.open) expanded.add(path);
+        else expanded.delete(path);
+        localStorage.setItem(storageKey, JSON.stringify([...expanded]));
+      });
+    });
+
+    // Landing on a note page: reveal + highlight whichever link in this
+    // tree points at the page currently loaded, so the sidebar shows where
+    // you are instead of always resetting to a blank, scrolled-to-top
+    // state. Search the whole scrollable nav card, not just this tree, so
+    // the "Other"/root-notes link (a sibling, not part of this recursion)
+    // is caught too when the current note happens to live there.
+    const scrollContainer = (root as HTMLElement).closest('[data-notes-tree-scroll]') ?? root;
+    const links = [...scrollContainer.querySelectorAll('a[href^="/notes/"]')] as HTMLAnchorElement[];
+    const activeLink = links.find((a) => a.getAttribute('href') === location.pathname);
+    if (!activeLink) return;
+
+    activeLink.classList.add('text-accent');
+
+    let ancestor = activeLink.closest('details') as HTMLDetailsElement | null;
+    while (ancestor) {
+      ancestor.open = true;
+      ancestor = ancestor.parentElement?.closest('details') ?? null;
+    }
+
+    // Wait a frame so the just-opened <details> have settled their layout
+    // before measuring scroll position.
+    requestAnimationFrame(() => {
+      activeLink.scrollIntoView({ block: 'center' });
+    });
+  });
+</script>

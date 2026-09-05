@@ -1,0 +1,114 @@
+---
+import Note from '../layouts/Note.astro';
+import { buildRelatedIndex, getNotesGraph, getLocalSubgraph, getRelatedNotes, topicOf } from '../lib/notes-graph';
+import { buildNotesTree, flattenNotesInOrder, notesIndexHref, STATIC_TOPIC_PAGES } from '../lib/notes-tree';
+import type { RelationKind } from '../lib/note-kinds';
+import type { CollectionEntry } from 'astro:content';
+
+export async function getStaticPaths() {
+  // Shared with src/pages/graph.astro via a module-scope memo, so the
+  // expensive render-every-note pass that produces both the backlink graph
+  // and this page's Content/headings runs once per build, not twice.
+  const { allNotes, rendered, backlinkMap, edges } = await getNotesGraph();
+
+  // O(1) slug lookups instead of an allNotes.find() per backlink per note.
+  const noteBySlug = new Map(allNotes.map((n): [string, typeof n] => [n.id, n]));
+  const relatedIndex = buildRelatedIndex(allNotes);
+
+  // Memoized per topic within this single getStaticPaths call — otherwise
+  // every note in a topic would rebuild that topic's whole tree from scratch.
+  const topicCache = new Map<string, { tree: ReturnType<typeof buildNotesTree>; order: CollectionEntry<'notes'>[] }>();
+  function getTopicTreeAndOrder(topicDir: string) {
+    let cached = topicCache.get(topicDir);
+    if (cached) return cached;
+
+    const isStatic = STATIC_TOPIC_PAGES.has(topicDir);
+    const topicNotes = allNotes.filter((n) => {
+      if (!n.id.startsWith(`${topicDir}/`)) return false;
+      // Match each family's own listing-page inclusion rule (see
+      // shipsolid/system-design/patterns index.astro vs topic/[topic].astro).
+      if (!isStatic && n.data.hidden) return false;
+      return true;
+    });
+    const tree = buildNotesTree(topicNotes);
+    const order = flattenNotesInOrder(tree, notesIndexHref(topicDir).rootPosition);
+    cached = { tree, order };
+    topicCache.set(topicDir, cached);
+    return cached;
+  }
+
+  return allNotes.map((note, i) => {
+    // Tag-overlap scored, same pattern as blog/[...slug].astro's related
+    // posts. Not filtered to score > 0 like the blog's version: every other
+    // note is ranked, so when nothing shares a tag the same-topic tie-break
+    // takes over and this degrades to the old same-topic-only behavior
+    // instead of leaving the section empty. See getRelatedNotes for why
+    // scoring only the topic/tag candidate union is equivalent to scoring
+    // every note.
+    const noteTopic = note.id.split('/')[0];
+
+    const related = getRelatedNotes(note, relatedIndex);
+
+    const backlinks = (backlinkMap.get(note.id) ?? [])
+      .map((entry) => ({ note: noteBySlug.get(entry.slug), kind: entry.kind }))
+      .filter((r): r is { note: CollectionEntry<'notes'>; kind: RelationKind } => Boolean(r.note));
+
+    // Outbound typed relations, resolved from this note's own frontmatter —
+    // not from the computed graph edges, whose source/target are sorted
+    // alphabetically for undirected dedup and so don't preserve which note
+    // authored the relation (see notes-graph.ts's addEdge). Stale/renamed
+    // targets are silently dropped, same as unresolved [[wikilinks]].
+    const outboundRelations = note.data.relations
+      .map((rel) => ({ note: noteBySlug.get(rel.slug), kind: rel.kind }))
+      .filter((r): r is { note: CollectionEntry<'notes'>; kind: RelationKind } => Boolean(r.note));
+
+    const { nodes: localNoteEntries, edges: localEdges } = getLocalSubgraph(note.id, allNotes, edges);
+    const localGraph = {
+      nodes: localNoteEntries.map((n) => ({
+        slug: n.id,
+        title: n.data.title,
+        topic: topicOf(n.id),
+        noteType: n.data.noteType,
+      })),
+      edges: localEdges,
+    };
+
+    const { Content, headings } = rendered[i];
+
+    const { tree, order } = getTopicTreeAndOrder(noteTopic);
+    const idx = order.findIndex((n) => n.id === note.id);
+    // Assigned into a typed local rather than a `cond ? entry : undefined` ternary: the ternary
+    // makes TS synthesize `CollectionEntry<'notes'> | undefined` as an expression type, and that
+    // union is large enough to trip ts(2590). Same conditions, same result.
+    let prevNote: CollectionEntry<'notes'> | undefined;
+    if (idx > 0) prevNote = order[idx - 1];
+    let nextNote: CollectionEntry<'notes'> | undefined;
+    if (idx >= 0 && idx < order.length - 1) nextNote = order[idx + 1];
+
+    return {
+      params: { slug: note.id },
+      props: {
+        note, related, backlinks, outboundRelations, localGraph, Content, headings, tree, prevNote, nextNote,
+      },
+    };
+  });
+}
+
+const {
+  note, related, backlinks, outboundRelations, localGraph, Content, headings, tree, prevNote, nextNote,
+} = Astro.props;
+---
+
+<Note
+  note={note}
+  headings={headings}
+  related={related}
+  backlinks={backlinks}
+  outboundRelations={outboundRelations}
+  localGraph={localGraph}
+  tree={tree}
+  prevNote={prevNote}
+  nextNote={nextNote}
+>
+  <Content />
+</Note>

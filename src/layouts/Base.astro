@@ -1,0 +1,88 @@
+---
+// Self-hosted, same-origin, content-hashed — no third-party Google Fonts
+// request. Shantell Sans is the single sans face: one variable woff2 per subset
+// spanning wght 300–800, so every font-weight utility (400/500/600/700) resolves
+// from it. JetBrains Mono 400/500 stays for code and mono chrome. Italics for
+// <em> are synthesised — no separate italic file is shipped.
+import '@fontsource-variable/shantell-sans/wght.css';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/500.css';
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+  ogImage?: string;
+  article?: boolean;
+}
+
+const {
+  title,
+  description = 'Observability Architect | Building Autonomous Reliability at Scale | Distributed Systems • SRE • Platform Engineering',
+  ogImage = '/og-image.png',
+  article = false,
+} = Astro.props;
+
+const pathname = Astro.url.pathname;
+const canonicalURL = new URL(pathname, Astro.site);
+const socialImageURL = new URL(ogImage, Astro.site);
+const ga4Id = import.meta.env.PUBLIC_GA4_ID;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Theme init: must run before first paint to avoid a flash of the wrong
+         theme. Reads a stored preference, defaulting to dark on a first visit
+         (OS preference is ignored for the default). Dark is the implicit CSS
+         default (see src/styles/global.css) — only an explicit stored "light"
+         writes anything to the DOM. -->
+    <script is:inline>
+      (function () {
+        try {
+          if (localStorage.getItem('theme') === 'light') document.documentElement.dataset.theme = 'light';
+        } catch (e) {}
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="generator" content={Astro.generator} />
+
+    <!-- SEO -->
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalURL} />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content={article ? 'article' : 'website'} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:image" content={socialImageURL} />
+    <meta property="og:site_name" content="Amit Singh" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={socialImageURL} />
+
+    <!-- Fonts are self-hosted via @fontsource — imported in the component script. -->
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Google Analytics 4 -->
+    {ga4Id && <script async src={`https://www.googletagmanager.com/gtag/js?id=${ga4Id}`}></script>}
+    {ga4Id && <script define:vars={{ ga4Id }}>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', ga4Id);
+    </script>}
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to content</a>
+    <slot />
+  </body>
+</html>

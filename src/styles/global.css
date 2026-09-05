@@ -1,0 +1,776 @@
+/* Tailwind v4 CSS-first config — this file replaces the deleted
+   tailwind.config.mjs. Every `theme.extend` key from that config is ported
+   into the @theme block below; the two `backgroundImage`/`backgroundSize`
+   keys, which have no @theme namespace, become @utility rules. */
+@import 'tailwindcss' source(none);
+
+/* Reproduces the v3 `content:` array verbatim — md/mdx deliberately excluded.
+   Content markdown is prose rendered through `.prose` and components, never
+   authored with utility classes, so scanning the ~2,580 note/blog/gita files
+   finds nothing real — and a Python slice like `letters[-4:-1]` in a code
+   fence made Tailwind emit a `.[-4:-1]` rule that tripped esbuild's CSS
+   minifier ("Expected identifier but found -4"). `source(none)` on the import
+   switches off v4's automatic source detection, which would otherwise sweep
+   those .md files back in and reopen that trap. Path is relative to this file. */
+@source '../../src/**/*.{astro,html,js,jsx,ts,tsx}';
+
+@plugin '@tailwindcss/typography';
+
+/* Dark is the site's default, unprefixed look (tested, live appearance);
+   `light:` is the override, gated on the `data-theme="light"` attribute the
+   theme toggle sets on <html> — the inverse of Tailwind's built-in `dark:`
+   variant, which assumes light is the default.
+
+   This shape is selector-identical to the v3 plugin it replaces
+   (`addVariant('light', ':is([data-theme="light"] &)')`): both compile to
+   `:is([data-theme=light] .light\:foo)`. Do NOT switch to the
+   `&:where([data-theme="light"] *)` shape v4's docs use for `dark:` — :where()
+   contributes zero specificity, so every one of the ~90 `light:` overrides
+   would start losing to the rule it is meant to beat. */
+@custom-variant light (:is([data-theme='light'] &));
+
+@theme {
+  /* Extends the default screen scale (sm 640 · md 768 · lg 1024 · xl 1280 ·
+     2xl 1536). 1760px is the content-shell width (--container-9xl = 110rem) —
+     the point where the site column standard's 300 / minmax(1000px,1fr) / 300
+     three-column grid fits without overflow. Below 3xl those shells use a
+     proportional 260 / 1fr / 260 fallback (from xl); below xl they stack.
+     See src/layouts/Note.astro, TopicListing.astro, pages/notes/index.astro,
+     pages/search.astro, and the gita content pages.
+
+     Must stay in rem: v4 orders breakpoint variants by comparing the declared
+     values, and a px value can't be ordered against the built-in rem scale —
+     `1760px` sorted 3xl BEFORE xl, so above 1760px the later xl rule won on
+     equal specificity and the side columns stayed at the 260px fallback. */
+  --breakpoint-3xl: 110rem;
+
+  /* CSS-var-backed (see the :root / [data-theme="light"] blocks below) rather
+     than literal hex, so every existing `accent`/`accent-hover`/etc. utility
+     across the whole site re-themes for free when the CSS vars flip — no
+     template edits needed. v3 needed an `<alpha-value>` placeholder to keep
+     opacity modifiers working; v4 does that itself, compiling `bg-accent/10`
+     to `color-mix(in oklab, var(--color-accent) 10%, transparent)`, which is
+     equivalent to v3's `rgb(r g b / 0.1)` (color-mix premultiplies alpha).
+
+     One behaviour difference from v3: these tokens resolve `rgb(var(--*-rgb))`
+     ONCE, on :root, and descendants inherit the already-computed colour — v3
+     re-resolved the var() per element. So a component that scopes a
+     `--color-*-rgb` triplet to a subtree will NOT re-theme that subtree under
+     v4. Keep every triplet definition at :root level. (Today they all are —
+     :root, :root[data-theme='light'], and the print @media block — so the two
+     versions are currently equivalent. This is a constraint on future edits.) */
+  --color-accent: rgb(var(--color-accent-rgb));
+  --color-accent-hover: rgb(var(--color-accent-hover-rgb));
+  --color-accent-muted: rgb(var(--color-accent-muted-rgb));
+  --color-accent-subtle: rgb(var(--color-accent-subtle-rgb));
+
+  /* Semantic tokens — var-backed like `accent`, so `bg-surface`, `text-muted`,
+     `border-line` etc. re-theme for free and support opacity modifiers.
+     `--color-bg` was missing from this block (it only existed on :root below)
+     — Tailwind only generates a `bg-<name>`/opacity-modifier utility for a
+     color declared *inside* @theme, so every `bg-bg`/`bg-bg/NN` class in the
+     codebase (Header's subnav divider + mobile menu + scroll-state backdrop,
+     Hero, Footer, VerseReader's sticky prev/next bar, GitaSubNav's row and
+     nav dropdown panel) has been silently generating no CSS at all — those
+     elements have had no background, just whatever showed through from
+     behind them. Invisible almost everywhere else (they sit directly on the
+     page's own --color-bg-colored body, so "transparent" and "opaque
+     --color-bg" look identical), but glaring on GitaSubNav's dropdown, a
+     `position: fixed` overlay meant to cover different content behind it.
+     `--color-bg-rgb: var(--color-bg-rgb)` is unaffected — that raw variable
+     was always fine; only the utility-generating alias was missing. */
+  --color-bg: rgb(var(--color-bg-rgb));
+  --color-surface: rgb(var(--color-surface-rgb));
+  --color-surface-hover: rgb(var(--color-surface-hover-rgb));
+
+  /* Form inputs / textareas — a recessed well one step below --color-bg, not
+     --color-surface (that's the raised card colour). `bg-field` replaces the
+     ~95 hand-written `bg-slate-950 light:bg-white` input classes. */
+  --color-field: rgb(var(--color-field-rgb));
+  /* Text/icon sitting ON bg-accent — replaces `text-slate-950 light:text-white`. */
+  --color-on-accent: rgb(var(--color-on-accent-rgb));
+
+  /* Text tiers, brightest to faintest: ink → body → muted → dim → faint. */
+  --color-ink: rgb(var(--color-text-rgb));
+  --color-body: rgb(var(--color-text-body-rgb));
+  --color-muted: rgb(var(--color-text-muted-rgb));
+  --color-dim: rgb(var(--color-text-dim-rgb));
+  --color-faint: rgb(var(--color-text-faint-rgb));
+
+  --color-line: rgb(var(--color-border-rgb));
+  --color-line-hover: rgb(var(--color-border-hover-rgb));
+  --color-success: rgb(var(--color-success-rgb));
+
+  /* Single sans face, site-wide (self-hosted variable, wght 300–800). Chosen for
+     a hand-drawn feel that stays legible; `system-ui` covers the swap-in gap and
+     any subset gaps (e.g. Devanagari falls through to --font-serif via the Gita
+     components). No 'Comic Sans MS' fallback — wrong register for this site. */
+  --font-sans: 'Shantell Sans Variable', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-serif: Georgia, Cambria, 'Times New Roman', serif;
+
+  /* v3 `maxWidth` — v4 folds max-w/w/min-w/basis into one --container-* scale. */
+  --container-8xl: 90rem;
+  /* 1760px — bumped from 100rem so the fixed 300/1000/300 + gap-10 (1680px)
+     three-column grid on /notes/ and the Note layout fits inside the shell
+     (1760 - 2*24px padding = 1712px). Used site-wide (Note header, search,
+     notes/* + gita/* listing pages), so every max-w-9xl page is 160px wider. */
+  --container-9xl: 110rem;
+  /* 1200px — the Gita Topics hub / Account dashboard / topic-page outer shell
+     all share this width; named rather than an inline max-w-[75rem] since it
+     recurs across multiple pages, same threshold 8xl/9xl already crossed. */
+  --container-content: 75rem;
+
+  --animate-fade-in: fadeIn 0.6s ease forwards;
+  --animate-blink: blink 1s step-end infinite;
+
+  /* Kept inside @theme so v4 emits them only when the animation is used. */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
+}
+
+/* v3 `backgroundImage['grid-overlay']` + `backgroundSize.grid`. Neither has a
+   v4 @theme namespace, so they become static utilities under the same names
+   the templates already use (Hero.astro: `bg-grid-overlay bg-grid`). */
+@utility bg-grid-overlay {
+  background-image:
+    linear-gradient(rgba(148, 226, 213, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 226, 213, 0.04) 1px, transparent 1px);
+}
+@utility bg-grid {
+  background-size: 44px 44px;
+}
+
+@layer base {
+  :root {
+    /* Semantic colours are stored as "R G B" triplets so Tailwind can back
+       utilities with them AND keep opacity modifiers working
+       (`bg-surface/50`) — same mechanism the accent already uses. The hex
+       `--color-*` vars are derived from the triplets for the ~25 raw
+       `var(--color-*)` call sites in component <style> blocks. */
+    --color-bg-rgb: 30 30 46; /* Catppuccin Mocha Base #1e1e2e (was slate-950) */
+    --color-surface-rgb: 49 50 68; /* Mocha Surface0 #313244 (was slate-900) */
+    --color-surface-hover-rgb: 69 71 90; /* Mocha Surface1 #45475a (was slate-800) */
+    --color-text-rgb: 205 214 244; /* Mocha Text #cdd6f4 (was slate-100) — text-ink */
+    --color-text-body-rgb: 186 194 222; /* Mocha Subtext1 #bac2de (was slate-300) — text-body, running secondary copy */
+    --color-text-muted-rgb: 166 173 200; /* Mocha Subtext0 #a6adc8 (was slate-400) — text-muted */
+    --color-text-dim-rgb: 147 153 178; /* Mocha Overlay2 #9399b2 — text-dim; dark now diverges from light (was shared slate-500, too faint on the lighter Catppuccin ground) */
+    /* Was Mocha Overlay1 #7f849c (127 132 156) — 3.4:1 on --color-surface, under
+       WCAG AA's 4.5:1 for normal text, and this token is used at 10-12px for
+       metadata/labels throughout. Brightened toward Overlay0 territory: 6.2:1
+       on --color-bg, 4.7:1 on --color-surface — clears AA on both. */
+    --color-text-faint-rgb: 152 158 183; /* #989eb7 — text-faint */
+    --color-border-rgb: 69 71 90; /* Mocha Surface1 #45475a (was slate-800) */
+    --color-border-hover-rgb: 88 91 112; /* Mocha Surface2 #585b70 (was slate-700) */
+    --color-field-rgb: 24 24 37; /* Mocha Mantle #181825 — form input well (was hand-written slate-950) */
+    --color-on-accent-rgb: 24 24 37; /* #181825 — ink on the mint accent (was slate-950) */
+
+    --color-bg: rgb(var(--color-bg-rgb));
+    --color-surface: rgb(var(--color-surface-rgb));
+    --color-surface-hover: rgb(var(--color-surface-hover-rgb));
+    --color-text: rgb(var(--color-text-rgb));
+    --color-text-muted: rgb(var(--color-text-muted-rgb));
+    --color-text-faint: rgb(var(--color-text-faint-rgb));
+    --color-border: rgb(var(--color-border-rgb));
+    --color-border-hover: rgb(var(--color-border-hover-rgb));
+
+    /* Long-form article body — one notch softer than --color-text so running
+       prose doesn't glare, still AA on --color-bg. Consumed by .prose-doc and
+       the `text-body` utility. */
+    --color-prose-body: rgb(var(--color-text-body-rgb));
+    --color-code-bg: #313244; /* Mocha Surface0 (was slate-900 #0f172a) */
+
+    --color-accent-rgb: 148 226 213; /* Mocha Teal #94e2d5 (was #00d9a6) */
+    --color-accent-hover-rgb: 137 220 235; /* Mocha Sky #89dceb (was #00f0b8) */
+    --color-accent-muted-rgb: 47 57 69; /* #2f3945 — Mocha Teal ~14% over Base; tag/badge fill (was #003d2e) */
+    --color-accent-subtle-rgb: 75 105 109; /* #4b696d — Mocha Teal ~38% over Base; subtle fill (was #0a5b55) */
+
+    /* Un-themed status green (Note "✓ Read" badge, family-tree "Active"
+       pill, notes/index read markers) had no `light:` pair and failed AA on
+       white — this token carries a darker light-mode value. */
+    --color-success-rgb: 166 227 161; /* Mocha Green #a6e3a1 (was green-400) */
+  }
+
+  /* #00d9a6 computes to ~1.8:1 contrast on white — fails WCAG AA (4.5:1) for
+     the text/icon uses it's put to everywhere (text-accent, prose-a,
+     .filter-tag.active, ...). teal-700 clears ~5.5:1. --color-surface uses
+     `white`, not the mechanical slate-100 mirror of slate-900, because
+     slate-50 -> slate-100 is too flat a jump for a card to read as "raised"
+     against the page — every other token mirrors the shade index around 500. */
+  :root[data-theme='light'] {
+    --color-bg-rgb: 248 250 252; /* slate-50 */
+    --color-surface-rgb: 255 255 255;
+    --color-surface-hover-rgb: 241 245 249; /* slate-100 */
+    --color-text-rgb: 15 23 42; /* slate-900 — text-ink */
+    --color-text-body-rgb: 51 65 85; /* slate-700 — text-body */
+    --color-text-muted-rgb: 71 85 105; /* slate-600 — text-muted */
+    --color-text-dim-rgb: 100 116 139; /* slate-500 — text-dim (unchanged across themes) */
+    /* faint was slate-400 (#94a3b8) — ~2.7:1 on white, fails AA even for large
+       text. slate-500 clears AA for large / UI text while still reading faint. */
+    --color-text-faint-rgb: 100 116 139; /* slate-500 */
+    --color-border-rgb: 226 232 240; /* slate-200 */
+    --color-border-hover-rgb: 203 213 225; /* slate-300 */
+    --color-field-rgb: 255 255 255; /* white input on the slate-50 page */
+    --color-on-accent-rgb: 255 255 255; /* white text on the teal-700 accent */
+
+    --color-prose-body: rgb(var(--color-text-body-rgb));
+    --color-code-bg: #f8fafc; /* slate-50 */
+
+    --color-accent-rgb: 15 118 110; /* #0f766e teal-700 */
+    --color-accent-hover-rgb: 17 94 89; /* #115e59 teal-800 */
+    --color-accent-muted-rgb: 204 251 241; /* #ccfbf1 teal-100 */
+    --color-accent-subtle-rgb: 94 234 212; /* #5eead4 teal-300 */
+
+    /* green-400 is ~1.9:1 on white — green-700 clears AA, same reasoning as
+       the accent contrast pair above. */
+    --color-success-rgb: 21 128 61; /* green-700 */
+  }
+
+  html {
+    scroll-behavior: smooth;
+    /* Header is `fixed` (h-16 = 64px); offset anchor jumps / TOC clicks so the
+       target heading lands below it instead of behind it. */
+    scroll-padding-top: 5rem;
+  }
+  /* /gita/* and /tools/* render a second nav row under the header (~48px) —
+     clear that too so in-page jumps don't land behind it. */
+  html:has([data-subnav-row]) {
+    scroll-padding-top: 8rem;
+  }
+
+  /* Two v3 Preflight rules Tailwind 4 dropped, restored so the 3 -> 4 upgrade
+     is behaviourally a no-op. v4 leaves buttons on the browser default
+     `cursor: default`, and recolours ::placeholder to currentColor at 50%
+     (v3 used a flat gray-400) — which would have washed the ~20 tool-page
+     inputs. Placeholder now rides the faint token so it stays theme-coherent;
+     still overridable by `placeholder:text-*` in the later utilities layer. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-faint);
+  }
+
+  body {
+    @apply bg-[var(--color-bg)] text-[var(--color-text)] font-sans antialiased transition-colors duration-200;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-bg);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border-hover);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-faint);
+  }
+
+  /* Visible keyboard focus. Only fires for `:focus-visible` (keyboard / non-
+     pointer), so it never shows on mouse click. Zero-specificity-ish base rule:
+     components that opt out with `focus:outline-none` (form inputs that swap in
+     a custom border-tint state) are unaffected — that utility lands in a later
+     cascade layer. Fills the gap for nav / TOC / sidebar / card / breadcrumb
+     links, which today have no focus style at all. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--color-accent-rgb));
+    outline-offset: 2px;
+  }
+
+  /* The skip-link target is focused programmatically on activation — suppress
+     the ring that would otherwise frame the whole content region. */
+  #main:focus {
+    outline: none;
+  }
+
+  /* Honour reduced-motion globally: near-instant transitions / animations, no
+     smooth scroll. The one sanctioned `!important` block — it has to beat
+     utility-level transition / animation classes. JS-driven motion branches on
+     matchMedia separately (Hero typewriter, notes-graph simulation). */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .section-container {
+    @apply max-w-6xl mx-auto px-6 py-24;
+  }
+
+  /* Skip-to-content link — first focusable element on every page (see
+     Base.astro). Off-screen until focused, then pinned top-left above the
+     fixed header (z-50). Positioning is hand-written rather than @apply'd:
+     the Tailwind translate-var chain (-translate-y-20 vs focus:translate-y-0)
+     doesn't reliably flip inside a component class. */
+  .skip-link {
+    @apply fixed left-4 z-[200] rounded-lg bg-accent px-4 py-2
+           text-sm font-medium text-on-accent;
+    top: 0.5rem;
+    transform: translateY(-150%);
+    transition: transform 0.15s ease;
+  }
+  .skip-link:focus {
+    transform: translateY(0);
+  }
+
+  .section-label {
+    @apply font-mono text-accent text-sm tracking-widest uppercase;
+  }
+
+  /* The site column standard, in one place instead of copy-pasted across
+     Note / BlogPost / TopicListing / notes,blog,flashcards index. Below xl it
+     stacks; xl–3xl uses a proportional 260 / 1fr (/ 260); at 3xl (1760px, the
+     max-w-9xl shell) it locks to 300 / minmax(1000px,1fr) (/ 300). Sticky
+     side-rail offsets still vary per page — left for the structural phase. */
+  .doc-grid {
+    @apply grid grid-cols-1 gap-10
+           xl:grid-cols-[260px_1fr_260px]
+           3xl:grid-cols-[300px_minmax(1000px,1fr)_300px];
+  }
+  .doc-grid-2 {
+    @apply grid grid-cols-1 gap-10
+           xl:grid-cols-[1fr_260px]
+           3xl:grid-cols-[minmax(1000px,1fr)_300px];
+  }
+
+  /* Small mono all-caps label above a group/section. Carries only the visual
+     styling — use it ON a real <h2>/<h3> so the section shows up in the
+     document outline, instead of the <p class="text-xs font-mono uppercase …">
+     pseudo-headings it replaces. */
+  .eyebrow {
+    @apply text-xs font-mono uppercase tracking-widest text-dim;
+  }
+
+  .section-title {
+    @apply text-3xl md:text-4xl font-bold text-[var(--color-text)] mt-2;
+  }
+
+  .card {
+    @apply bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-6 transition-all duration-300;
+  }
+
+  .card:hover {
+    @apply border-[var(--color-border-hover)] shadow-lg shadow-accent/5;
+  }
+
+  .tag {
+    @apply px-2 py-0.5 text-xs font-mono rounded bg-accent/10 text-accent border border-accent/20;
+  }
+
+  .btn-primary {
+    /* Accent flips between a bright dark-mode teal and a darker light-mode
+       teal (see :root[data-theme="light"] above) — the label color has to
+       flip with it, or light mode gets near-black text on a mid-dark teal. */
+    @apply px-5 py-2.5 bg-accent text-on-accent font-semibold rounded-lg text-sm
+           hover:bg-accent-hover transition-colors duration-200;
+  }
+
+  .btn-outline {
+    @apply px-5 py-2.5 border border-line-hover text-body font-medium rounded-lg text-sm
+           hover:border-dim hover:text-ink transition-colors duration-200;
+  }
+
+}
+
+/* Everything that overrides @tailwindcss/typography must live in the UTILITIES
+   layer. v4's plugin registers `prose` there (v3 put it in `components`), and a
+   later layer beats an earlier one regardless of specificity — so in
+   `components` this whole block is silently inert: no max-width release, no
+   heading rules, no link colour. Within `utilities` it wins two ways: it is
+   emitted after `@import "tailwindcss"`, taking the source-order tie against
+   `.prose` itself, and the plugin's descendant selectors are `:where()`
+   (zero specificity), so `.prose-doc <el>` outranks them. */
+@layer utilities {
+  /* Code inside pre blocks: strip the inline-code background so it doesn't double up */
+  .prose pre code {
+    @apply bg-transparent text-body p-0 text-sm;
+  }
+
+  /* ---------------------------------------------------------------------------
+     .prose-doc — the one shared long-form article style.
+
+     Used with `prose prose-invert prose-doc` on every rendered Markdown body
+     (notes, blog posts, project write-ups, gita commentary, topic overviews).
+     `prose prose-invert` still provides @tailwindcss/typography's structural
+     defaults (list markers, counters, first/last-child margin resets, figure
+     handling); this class carries the site's colour, rhythm and wrap
+     decisions. It replaces a ~35-line `prose-*:` modifier list that was
+     copy-pasted — and had begun to drift — across 6+ files.
+
+     Text fills the full column width (max-width: none) — no reading-measure
+     cap; the column width is governed by the layout's grid tracks instead
+     (see the site column standard in Note.astro / TopicListing.astro / etc.).
+     --------------------------------------------------------------------------- */
+  .prose-doc {
+    max-width: none;
+    /* Shantell Sans runs a touch wider and shorter than Inter did, and the
+       site's dark ground needs a larger body size than the typography plugin's
+       16px / 1.75 default to stay comfortable over long reads. Bumped size,
+       leading, and word/letter spacing for readability. */
+    font-size: 1.125rem; /* 18px, up from the plugin's 16px */
+    line-height: 1.8;
+    letter-spacing: 0.005em;
+    word-spacing: 0.06em;
+  }
+
+  .prose-doc :is(h1, h2, h3, h4) {
+    color: var(--color-text);
+    font-weight: 700;
+    /* Was -0.025em for Inter — too tight for this rounder face. */
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .prose-doc h2 {
+    font-size: 1.7rem;
+    line-height: 2.4rem;
+    margin-top: 3rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .prose-doc h3 {
+    font-size: 1.375rem;
+    line-height: 2rem;
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .prose-doc p {
+    color: var(--color-prose-body);
+    line-height: 1.9;
+    margin: 1.5rem 0;
+    text-wrap: pretty;
+  }
+  .prose-doc :is(ul, ol) {
+    color: var(--color-prose-body);
+    margin: 1.5rem 0;
+  }
+  .prose-doc li {
+    margin: 0.6rem 0;
+    line-height: 1.85;
+    text-wrap: pretty;
+  }
+  .prose-doc li::marker {
+    color: rgb(var(--color-accent-rgb));
+  }
+
+  .prose-doc a {
+    color: rgb(var(--color-accent-rgb));
+    text-decoration: none;
+  }
+  .prose-doc a:hover {
+    text-decoration: underline;
+  }
+  .prose-doc strong {
+    color: var(--color-text);
+    font-weight: 600;
+  }
+  .prose-doc em {
+    color: var(--color-prose-body);
+    font-style: italic;
+  }
+
+  .prose-doc blockquote {
+    margin: 1.5rem 0;
+    padding: 0.75rem 0 0.75rem 1.25rem;
+    border-left: 4px solid rgb(var(--color-accent-rgb));
+    border-radius: 0 0.5rem 0.5rem 0;
+    background: color-mix(in srgb, var(--color-surface) 55%, transparent);
+    color: var(--color-text-muted);
+    font-style: normal;
+  }
+  .prose-doc blockquote p:first-of-type::before,
+  .prose-doc blockquote p:last-of-type::after {
+    content: none;
+  }
+
+  .prose-doc :not(pre) > code {
+    color: rgb(var(--color-accent-rgb));
+    background: rgb(var(--color-accent-rgb) / 0.1);
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.875em;
+  }
+  .prose-doc :not(pre) > code::before,
+  .prose-doc :not(pre) > code::after {
+    content: none;
+  }
+
+  .prose-doc pre {
+    margin: 1.5rem 0;
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    background: var(--color-code-bg);
+    overflow-x: auto;
+  }
+
+  .prose-doc table {
+    width: 100%;
+    margin: 1.5rem 0;
+    font-size: 0.875rem;
+  }
+  .prose-doc thead {
+    border-bottom: 1px solid var(--color-border-hover);
+  }
+  .prose-doc th {
+    color: var(--color-prose-body);
+    font-weight: 600;
+    text-align: left;
+    padding: 0.75rem 1rem;
+  }
+  .prose-doc td {
+    color: var(--color-text-muted);
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .prose-doc hr {
+    margin: 2.5rem 0;
+    border-color: var(--color-border);
+  }
+}
+
+@layer components {
+  /* Hover copy button on code blocks — injected by src/lib/reading-enhancements.ts
+     (Note + BlogPost layouts), so it needs a global rule, not a scoped one. */
+  .copy-btn {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    padding: 0.3rem;
+    border-radius: 0.375rem;
+    color: var(--color-text-faint);
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: pointer;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s, border-color 0.15s, background 0.15s;
+  }
+  pre:hover .copy-btn,
+  .copy-btn:focus-visible {
+    opacity: 1;
+  }
+  .copy-btn:hover {
+    color: rgb(var(--color-accent-rgb));
+    border-color: rgb(var(--color-accent-rgb) / 0.3);
+    background: rgb(var(--color-accent-rgb) / 0.05);
+  }
+
+  /* Filter chip pattern — shared by TopicListing.astro and search.astro */
+  .filter-tag {
+    @apply w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-mono
+           text-dim bg-transparent transition-colors duration-150 cursor-pointer text-left;
+  }
+  .filter-tag:hover:not(.active) {
+    @apply text-body bg-surface-hover/60;
+  }
+  .filter-tag.active {
+    @apply text-accent bg-accent/10;
+  }
+  .filter-tag.active .tag-count {
+    @apply text-accent/60;
+  }
+  .tag-count {
+    @apply text-faint font-mono text-[10px];
+  }
+
+  /* GitHub-style callouts — flashcards markdown pipeline only, see
+     src/lib/content/remark-callouts.ts. Not registered site-wide. */
+  .callout {
+    @apply border-l-4 rounded-r-xl px-4 py-3 my-4 text-sm;
+  }
+  .callout-title {
+    @apply font-semibold text-xs uppercase tracking-wide mb-1;
+  }
+  .callout-note,
+  .callout-tip {
+    @apply bg-accent/10 border-accent/40 text-body;
+  }
+  .callout-note .callout-title,
+  .callout-tip .callout-title {
+    @apply text-accent;
+  }
+  .callout-warning,
+  .callout-caution {
+    @apply bg-amber-500/10 border-amber-500/40 text-body;
+  }
+  .callout-warning .callout-title,
+  .callout-caution .callout-title {
+    /* amber-400 fails AA on white — amber-700 is the light-mode pair, same
+       reasoning as the accent contrast fix above. */
+    @apply text-amber-400 light:text-amber-700;
+  }
+  .callout-important {
+    @apply bg-red-500/10 border-red-500/40 text-body;
+  }
+  .callout-important .callout-title {
+    @apply text-red-400 light:text-red-700;
+  }
+
+  /* Cloze / fill-blank masking — flashcards only */
+  .masked-blank {
+    @apply inline-block min-w-[3ch] px-2 rounded bg-accent/10 border border-dashed border-accent/40 select-none;
+    color: transparent;
+  }
+  .masked-answer {
+    @apply inline-block px-1 rounded bg-accent/10 text-accent font-semibold;
+  }
+
+  /* Compact prose spacing for the flashcards study card box — the full .prose bundle used by
+     blog/notes is tuned for a wide article column and blows out a ~300px card face. */
+  .card-content :is(h1, h2, h3, h4) {
+    @apply mt-4 mb-2 text-ink;
+  }
+  .card-content p {
+    @apply my-2;
+  }
+  .card-content ul,
+  .card-content ol {
+    @apply my-2 pl-5;
+  }
+  .card-content pre {
+    @apply my-3 rounded-xl text-sm;
+  }
+  .card-content table {
+    @apply my-3 text-sm;
+  }
+  .card-content img {
+    @apply rounded-xl my-3;
+  }
+
+  /* Tab switcher — shared by pomo.astro and flashcards/stats.astro */
+  .tabs {
+    @apply inline-flex gap-1 p-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl mb-6;
+  }
+  .tab {
+    @apply px-5 py-2 rounded-lg text-[0.8rem] font-mono font-semibold text-dim bg-transparent border-none cursor-pointer transition-colors duration-150;
+  }
+  .tab:hover {
+    @apply text-muted;
+  }
+  .tab[aria-selected='true'] {
+    @apply text-accent bg-accent/10;
+  }
+
+  /* Badge/achievement grid — shared by pomo.astro and flashcards/stats.astro. Unlock state is
+     always derived live from current stats at render time (no stored unlocked flags), so it can
+     never desync. */
+  .badge-grid {
+    @apply grid grid-cols-2 gap-3;
+  }
+  @media (min-width: 640px) {
+    .badge-grid {
+      @apply grid-cols-3;
+    }
+  }
+  .badge {
+    @apply flex flex-col items-center text-center gap-1.5 px-2 py-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)];
+    opacity: 0.45;
+    filter: grayscale(1);
+    transition: opacity 0.2s ease, filter 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  }
+  .badge.unlocked {
+    @apply border-accent/30 bg-accent/[0.08];
+    opacity: 1;
+    filter: none;
+  }
+  .badge-icon {
+    @apply text-2xl leading-none;
+  }
+  .badge-label {
+    @apply text-[0.8rem] font-semibold text-body;
+  }
+  .badge-desc {
+    @apply text-[0.7rem] text-dim;
+  }
+}
+
+/* Print — notes and blog posts are the obvious "save as PDF" case. Drop the
+   fixed chrome and the sticky side rails, force readable black-on-white. */
+@media print {
+  [class~='fixed'],
+  footer,
+  [class*='sticky'],
+  .graph-tooltip,
+  noscript {
+    display: none !important;
+  }
+  :root {
+    --color-bg-rgb: 255 255 255;
+    --color-surface-rgb: 255 255 255;
+    --color-field-rgb: 255 255 255;
+    --color-text-rgb: 17 24 39;
+    --color-prose-body: #111827;
+    --color-border-rgb: 203 213 225;
+  }
+  body {
+    background: #fff;
+  }
+  main {
+    padding-top: 0 !important;
+  }
+  a {
+    text-decoration: underline;
+  }
+  .card {
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Gita Reading Mode (Wave 5 Phase 5) — text size and column width
+   preferences, persisted via gita:reading and applied as data attributes on
+   <html> (same technique as the theme toggle, src/layouts/Base.astro /
+   Header.astro). .gita-reading-col carries override rules only for
+   narrow/wide — the 'default' value relies on each element's own existing
+   width (Phase 1's max-w-[70ch] on verse pages, or no width constraint at
+   all on book essays, left exactly as it already was before this phase).
+   .gita-reading-text uses em, not a fixed px/rem value, so the ladder scales
+   each element relative to its own base size — preserving the existing
+   Translation-vs-Explanation size difference instead of flattening it. */
+[data-reading-width='narrow'] .gita-reading-col {
+  max-width: 55ch;
+}
+[data-reading-width='wide'] .gita-reading-col {
+  max-width: 90ch;
+}
+[data-reading-size='sm'] .gita-reading-text {
+  font-size: 0.9em;
+}
+[data-reading-size='lg'] .gita-reading-text {
+  font-size: 1.15em;
+}

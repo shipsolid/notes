@@ -1,0 +1,78 @@
+---
+// Topic color key + click-to-hide toggles for a NotesGraphCanvas instance.
+// Decoupled from the canvas itself (which may sit in a different column) via
+// `window.__notesGraphInstances[svgId]`, populated by the canvas's own script.
+import { topicLabel } from '../lib/notes-graph';
+
+interface Props {
+  topics: string[];
+  topicColors: Record<string, string>;
+  defaultColor: string;
+  svgId?: string;
+}
+
+const { topics, topicColors, defaultColor, svgId = 'graph-svg' } = Astro.props;
+---
+
+<div class="flex flex-col gap-1.5" data-legend-for={svgId}>
+  {topics.map((topic) => (
+    <button
+      type="button"
+      aria-pressed="true"
+      class="legend-chip flex items-center gap-2 text-xs font-mono text-muted hover:text-ink transition-colors"
+      data-topic={topic}
+    >
+      <span class="w-2.5 h-2.5 rounded-xs shrink-0" style={`background:${topicColors[topic] ?? defaultColor}`}></span>
+      {topicLabel(topic)}
+    </button>
+  ))}
+</div>
+
+<script define:vars={{ svgId }}>
+(() => {
+  const container = document.querySelector(`[data-legend-for="${svgId}"]`);
+  if (!container) return;
+
+  const hiddenTopics = new Set();
+
+  container.querySelectorAll('.legend-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const topic = chip.dataset.topic;
+      if (hiddenTopics.has(topic)) {
+        hiddenTopics.delete(topic);
+        chip.classList.remove('legend-off');
+      } else {
+        hiddenTopics.add(topic);
+        chip.classList.add('legend-off');
+      }
+      chip.setAttribute('aria-pressed', String(!hiddenTopics.has(topic)));
+
+      const instance = window.__notesGraphInstances?.[svgId];
+      if (!instance) return; // canvas hasn't mounted yet (shouldn't happen — canvas script runs first)
+      const { nodeEls, lineEls, sim, edgeList } = instance;
+      nodeEls.forEach((el) => {
+        el.style.display = hiddenTopics.has(el.dataset.topic) ? 'none' : '';
+      });
+      lineEls.forEach((line, i) => {
+        const edge = edgeList[i];
+        const hidden = hiddenTopics.has(sim[edge.a].topic) || hiddenTopics.has(sim[edge.b].topic);
+        line.style.display = hidden ? 'none' : '';
+      });
+    });
+  });
+})();
+</script>
+
+<style>
+  .legend-chip {
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    padding: 0.125rem 0;
+    text-align: left;
+  }
+  .legend-chip.legend-off {
+    opacity: 0.35;
+    text-decoration: line-through;
+  }
+</style>

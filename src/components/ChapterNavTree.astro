@@ -1,0 +1,24 @@
+---
+import NotesSidebarTree from './NotesSidebarTree.astro';
+import NotesRootLink from './NotesRootLink.astro';
+import type { NotesTree } from '../lib/notes-tree';
+
+interface Props {
+  tree: NotesTree;
+  rootLabel: string;
+  rootPosition: 'first' | 'last';
+  topicId?: string;
+}
+
+const { tree, rootLabel, rootPosition, topicId = '' } = Astro.props;
+---
+
+<div class="space-y-1.5">
+  {rootPosition === 'first' && tree.rootNotes.length > 0 && (
+    <NotesRootLink rootNotes={tree.rootNotes} rootLabel={rootLabel} />
+  )}
+  <NotesSidebarTree nodes={tree.sections} topicId={topicId} />
+  {rootPosition === 'last' && tree.rootNotes.length > 0 && (
+    <NotesRootLink rootNotes={tree.rootNotes} rootLabel={rootLabel} />
+  )}
+</div>

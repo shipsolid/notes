@@ -1,0 +1,141 @@
+---
+import { getCollection, type CollectionEntry } from 'astro:content';
+import Page from '../../layouts/Page.astro';
+import { slugifyTag } from '../../lib/tag-slug';
+import { formatTopicLabel, notesIndexHref } from '../../lib/notes-tree';
+import { byUpdatedDesc, isVisibleNote } from '../../lib/notes-query';
+
+export async function getStaticPaths() {
+  const allNotes = await getCollection('notes', (e) => isVisibleNote(e));
+
+  // Tags are free-text frontmatter, so casing sometimes drifts between notes
+  // (e.g. "Architecture" vs "architecture"). Group by slug rather than by
+  // raw tag string so near-duplicate casings land on one tag page instead
+  // of both trying to claim the same route.
+  const bySlug = new Map<string, { label: string; notes: Map<string, CollectionEntry<'notes'>> }>();
+  for (const note of allNotes) {
+    for (const tag of note.data.tags) {
+      const slug = slugifyTag(tag);
+      if (!bySlug.has(slug)) bySlug.set(slug, { label: tag, notes: new Map() });
+      bySlug.get(slug)!.notes.set(note.id, note);
+    }
+  }
+
+  return [...bySlug.entries()].map(([slug, { label, notes }]) => ({
+    params: { tag: slug },
+    props: {
+      tag: label,
+      notes: [...notes.values()].sort(byUpdatedDesc),
+    },
+  }));
+}
+
+const { tag, notes } = Astro.props;
+
+// Group by topic, preserving most-recently-updated topic first
+const topicMap = new Map<string, typeof notes>();
+for (const note of notes) {
+  const topicDir = note.id.split('/')[0];
+  if (!topicMap.has(topicDir)) topicMap.set(topicDir, []);
+  topicMap.get(topicDir)!.push(note);
+}
+const topicDirs = [...topicMap.keys()];
+---
+
+<Page
+  title={`#${tag} Notes — Amit Singh`}
+  description={`Notes tagged with ${tag}.`}
+>
+  <div class="max-w-9xl mx-auto px-6">
+      <!-- Header -->
+      <div class="mb-10">
+        <div class="flex items-center gap-2 text-xs font-mono text-faint mb-4">
+          <a href="/notes" class="hover:text-accent transition-colors">Notes</a>
+          <span>/</span>
+          <span class="text-faint">tag</span>
+          <span>/</span>
+          <span class="text-accent">{tag}</span>
+        </div>
+        <p class="section-label">Tag</p>
+        <h1 class="text-4xl font-bold text-ink mt-2">#{tag}</h1>
+        <p class="text-dim mt-2 font-mono text-sm">
+          {notes.length} {notes.length === 1 ? 'note' : 'notes'}
+          {topicDirs.length > 1 && ` across ${topicDirs.length} topics`}
+        </p>
+      </div>
+
+      <!-- Notes grouped by topic -->
+      <div class="space-y-12">
+        {topicDirs.map((topicDir) => {
+          const topicNotes = topicMap.get(topicDir)!;
+          const label = formatTopicLabel(topicDir);
+          const href = notesIndexHref(topicDir).base;
+          return (
+            <section>
+              <div class="flex items-center justify-between mb-4">
+                <h2 class="text-sm font-mono font-semibold text-muted uppercase tracking-widest">
+                  <span class="text-accent">#</span> {label}
+                </h2>
+                <a
+                  href={href}
+                  class="text-xs font-mono text-faint hover:text-accent transition-colors"
+                >
+                  All {label} notes →
+                </a>
+              </div>
+
+              <div class="flex flex-col gap-3">
+                {topicNotes.map((note) => {
+                  const updated = note.data.updated
+                    ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).format(note.data.updated)
+                    : null;
+                  return (
+                    <a
+                      href={`/notes/${note.id}`}
+                      class="card group flex items-start justify-between gap-4 no-underline hover:-translate-y-0.5"
+                    >
+                      <div class="min-w-0 flex-1">
+                        <h3 class="text-base font-medium text-ink group-hover:text-accent transition-colors leading-snug mb-1">
+                          {note.data.title}
+                        </h3>
+                        {note.data.description && (
+                          <p class="text-sm text-dim leading-relaxed line-clamp-2">
+                            {note.data.description}
+                          </p>
+                        )}
+                      </div>
+                      <div class="shrink-0 flex flex-col items-end gap-2 max-w-[45%]">
+                        <div class="flex flex-wrap gap-1.5 justify-end">
+                          {note.data.tags.map((t) => (
+                            <span class={`tag text-[11px] py-0.5 ${t === tag ? 'bg-accent/25 border-accent/50' : ''}`}>
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                        <div class="flex items-center gap-2">
+                          {updated && (
+                            <span class="text-xs font-mono text-faint">{updated}</span>
+                          )}
+                          <svg class="w-4 h-4 text-faint group-hover:text-accent transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                          </svg>
+                        </div>
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+
+      <div class="mt-10">
+        <a href="/notes" class="text-sm text-accent hover:text-accent-hover font-mono flex items-center gap-2 transition-colors">
+          ← All notes
+        </a>
+      </div>
+
+    </div>
+
+</Page>

@@ -1,0 +1,30 @@
+---
+import { getCollection } from 'astro:content';
+import Page from '../layouts/Page.astro';
+import { isVisibleNote } from '../lib/notes-query';
+
+// hidden !== excluded (see notes-graph.ts) — pool on !data.draft only, or
+// the eligible set collapses to the ~2 notes that aren't hidden.
+const allNotes = await getCollection('notes', (e) => isVisibleNote(e, { includeHidden: true }));
+const slugs = allNotes.map((note) => note.id);
+---
+
+<Page title="Random note — Amit Singh" description="Jump to a random note from the notebook.">
+  <div class="max-w-9xl mx-auto px-6 text-center">
+      <p class="section-label">Notebook</p>
+      <h1 class="text-3xl font-bold text-ink mt-2 mb-4">Shuffling…</h1>
+      <noscript>
+        <p class="text-muted">
+          Random note requires JavaScript.
+          <a href="/notes" class="text-accent hover:text-accent-hover">Browse all notes →</a>
+        </p>
+      </noscript>
+    </div>
+</Page>
+
+<script define:vars={{ slugs }}>
+  // Genuinely random per click, even from a cached page: Math.random() runs
+  // client-side at load time, not at build time.
+  const slug = slugs[Math.floor(Math.random() * slugs.length)];
+  window.location.replace(`/notes/${slug}/`);
+</script>

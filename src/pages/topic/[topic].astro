@@ -1,0 +1,36 @@
+---
+import { getCollection } from 'astro:content';
+import TopicListing from '../../layouts/TopicListing.astro';
+import { STATIC_TOPIC_PAGES } from '../../lib/notes-tree';
+import { byFilenameAsc, isVisibleNote } from '../../lib/notes-query';
+
+export async function getStaticPaths() {
+  const allNotes = await getCollection('notes', (e) => isVisibleNote(e));
+
+  const topicMap = new Map<string, typeof allNotes>();
+  for (const note of allNotes) {
+    // Root-level notes (src/content/notes/README.md) belong to no topic dir --
+    // without this guard README.md yields a bogus /notes/topic/readme.md/ page.
+    if (!note.id.includes('/')) continue;
+    const slug = note.id.split('/')[0].toLowerCase();
+    // shipsolid/system-design/patterns have their own dedicated static page —
+    // generating a second page for them here would just be a duplicate URL
+    // rendering the same topic differently.
+    if (STATIC_TOPIC_PAGES.has(slug)) continue;
+    if (!topicMap.has(slug)) topicMap.set(slug, []);
+    topicMap.get(slug)!.push(note);
+  }
+
+  return [...topicMap.entries()].map(([topicSlug, notes]) => ({
+    params: { topic: topicSlug },
+    props: {
+      topicDir: topicSlug,
+      notes: notes.sort(byFilenameAsc),
+    },
+  }));
+}
+
+const { topicDir, notes } = Astro.props;
+---
+
+<TopicListing topicDir={topicDir} notes={notes} />

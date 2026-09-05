@@ -1,0 +1,266 @@
+---
+import { getCollection, render } from 'astro:content';
+import Page from '../layouts/Page.astro';
+import MermaidRenderer from '../components/MermaidRenderer.astro';
+import { getStalenessDate } from '../lib/note-staleness';
+import { getNotesGraph, getOrphanNotes } from '../lib/notes-graph';
+import { getDevelopQueue } from '../lib/notes-develop-queue';
+import { formatTopicLabel, notesIndexHref } from '../lib/notes-tree';
+import { byUpdatedDesc, isVisibleNote } from '../lib/notes-query';
+import { runLinkCheck } from '../../scripts/notes/link-check-core.mjs';
+
+const linkCheckReport = runLinkCheck();
+const brokenLinkCount =
+  linkCheckReport.brokenMdLinks.length +
+  linkCheckReport.escapedLinks.length +
+  linkCheckReport.brokenDirectFileLinks.length +
+  linkCheckReport.readmeCaseMismatches.length +
+  linkCheckReport.unresolvedWikiLinks.length +
+  linkCheckReport.ambiguousWikiLinks.length +
+  linkCheckReport.brokenAnchors.length +
+  linkCheckReport.brokenRelations.length;
+
+const allVisibleNotes = await getCollection('notes', (e) => isVisibleNote(e));
+
+// The library's own front page (content/notes/README.md) is a hand-curated
+// overview, not a topic — render its body above the auto-generated dashboard
+// (same treatment TopicListing.astro gives each book's own README) and keep
+// it out of the topic sidebar / MOCs list below, where its root-level id
+// ("readme", no topic prefix) would otherwise surface as a bogus one-note topic.
+const rootReadme = allVisibleNotes.find((e) => e.id === 'readme');
+const rootReadmeRendered = rootReadme ? await render(rootReadme) : null;
+const RootReadmeContent = rootReadmeRendered?.Content ?? null;
+
+const visibleNotes = allVisibleNotes.filter((e) => e.id !== 'readme');
+const notes = visibleNotes.sort(byUpdatedDesc);
+
+// Separate, unfiltered-by-hidden pool: `hidden` only means "not in this
+// generic listing," not "excluded from the site" (see notes-graph.ts), and
+// most of the corpus is hidden here (it lives under the shipsolid section
+// index instead) — filtering this on !data.hidden too would starve the
+// widget down to ~2 eligible notes.
+const staleNotesPool = (await getCollection('notes', (e) => isVisibleNote(e, { includeHidden: true }))).filter(
+  (e) => e.id !== 'readme'
+);
+const datedNotes = staleNotesPool
+  .map((note) => ({ note, staleness: getStalenessDate(note) }))
+  .filter((entry): entry is { note: (typeof staleNotesPool)[number]; staleness: Date } => entry.staleness !== null);
+const stalestNotes = [...datedNotes]
+  .sort((a, b) => a.staleness.valueOf() - b.staleness.valueOf())
+  .slice(0, 8)
+  .map((entry) => entry.note);
+const recentlyUpdatedNotes = [...datedNotes]
+  .sort((a, b) => b.staleness.valueOf() - a.staleness.valueOf())
+  .slice(0, 13)
+  .map((entry) => entry.note);
+
+// Group by topic
+const topicMap = new Map<string, typeof notes>();
+for (const note of notes) {
+  const topicDir = note.id.split('/')[0];
+  if (!topicMap.has(topicDir)) topicMap.set(topicDir, []);
+  topicMap.get(topicDir)!.push(note);
+}
+// Sidebar order: alphabetical by display label
+const topicDirs = [...topicMap.keys()].sort((a, b) =>
+  formatTopicLabel(a).localeCompare(formatTopicLabel(b))
+);
+
+const { allNotes, edges, backlinkMap } = await getNotesGraph();
+const orphans = getOrphanNotes(allNotes, edges);
+const developQueue = getDevelopQueue(allNotes, backlinkMap);
+---
+
+<Page
+  title="Notes — Amit Singh"
+  description="Short-form technical notes organised by topic — observability, Kubernetes, DSA, and more."
+>
+  <div class="max-w-9xl mx-auto px-6">
+      <!-- Header -->
+      <div class="mb-12">
+        <p class="section-label">Notebook</p>
+        <h1 class="text-4xl font-bold text-ink mt-2">Notes by topic</h1>
+        <p class="text-muted mt-3 max-w-lg">
+          Quick-reference notes, checklists, and patterns I reach for repeatedly.
+          Browse by topic in the sidebar, or explore how they connect below.
+        </p>
+        <div class="flex flex-wrap items-center gap-2 mt-4">
+          <a href="/notes/random" class="tag no-underline py-1.5 hover:bg-accent/20 hover:border-accent/40 transition-colors">
+            🎲 Random note
+          </a>
+          <a href="/notes/graph" class="tag no-underline py-1.5 hover:bg-accent/20 hover:border-accent/40 transition-colors">
+            Graph view
+          </a>
+          <a href="/notes/mocs" class="tag no-underline py-1.5 hover:bg-accent/20 hover:border-accent/40 transition-colors">
+            🗺️ MOCs
+          </a>
+          <a href="/notes/tags" class="tag no-underline py-1.5 hover:bg-accent/20 hover:border-accent/40 transition-colors">
+            🏷️ All tags
+          </a>
+          <a href="/notes/readiness" class="tag no-underline py-1.5 hover:bg-accent/20 hover:border-accent/40 transition-colors">
+            📊 Readiness
+          </a>
+          <a href="/notes/link-health" class="tag no-underline py-1.5 hover:bg-accent/20 hover:border-accent/40 transition-colors">
+            🔗 Link Health
+          </a>
+          <a href="/notes/interview-questions" class="tag no-underline py-1.5 hover:bg-accent/20 hover:border-accent/40 transition-colors">
+            ❓ Interview Qs
+          </a>
+        </div>
+      </div>
+
+      <div class="doc-grid items-start">
+
+        <!-- Topic sidebar -->
+        <aside class="xl:sticky xl:top-28">
+          <div class="card">
+            <h2 class="eyebrow mb-4">Topics</h2>
+            <div class="space-y-1 xl:max-h-[calc(100vh-12rem)] xl:overflow-y-auto xl:pr-1">
+              {topicDirs.map((topicDir) => {
+                const count = topicMap.get(topicDir)!.length;
+                const label = formatTopicLabel(topicDir);
+                const href = notesIndexHref(topicDir).base;
+                return (
+                  <a
+                    href={href}
+                    class="flex items-center justify-between px-3 py-2 rounded-lg text-sm text-muted hover:text-ink hover:bg-surface-hover/50 transition group"
+                  >
+                    <span class="group-hover:text-accent transition-colors">{label}</span>
+                    <span class="text-xs font-mono text-faint group-hover:text-muted transition-colors">{count}</span>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        </aside>
+
+        <!-- Middle: README overview -->
+        <div class="space-y-10">
+          {RootReadmeContent && (
+            <section>
+              <div class="card">
+                <h2 class="eyebrow mb-4">Overview</h2>
+                <div class="prose prose-invert prose-doc">
+                  <RootReadmeContent />
+                </div>
+              </div>
+            </section>
+          )}
+        </div>
+
+        <!-- Broken Links + Orphans + Resurface -->
+        <aside class="space-y-6 xl:sticky xl:top-28">
+          {brokenLinkCount > 0 && (
+            <div class="card">
+              <h2 class="eyebrow mb-3">Broken Links ({brokenLinkCount})</h2>
+              <p class="text-[11px] text-faint mb-3 leading-snug">
+                Dead links, unresolved wikilinks, and broken relations found in the collection.
+              </p>
+              <a
+                href="/notes/link-health"
+                class="text-xs text-accent hover:text-accent-hover transition-colors no-underline"
+              >
+                View report →
+              </a>
+            </div>
+          )}
+
+          {orphans.length > 0 && (
+            <div class="card">
+              <h2 class="eyebrow mb-3">Orphans ({orphans.length})</h2>
+              <p class="text-[11px] text-faint mb-3 leading-snug">No incoming or outgoing links.</p>
+              <div class="space-y-1.5 max-h-64 overflow-y-auto">
+                {orphans.map((n) => (
+                  <a
+                    href={`/notes/${n.id}`}
+                    data-note-slug={n.id}
+                    class="flex items-center justify-between gap-2 text-xs text-dim hover:text-accent transition-colors no-underline leading-snug"
+                  >
+                    <span class="truncate">{n.data.title}</span>
+                    <span class="read-marker hidden shrink-0 text-success" aria-label="Read">✓</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {developQueue.length > 0 && (
+            <div class="card">
+              <h2 class="eyebrow mb-3">Develop Next</h2>
+              <p class="text-[11px] text-faint mb-3 leading-snug">
+                Stubs other notes already point to — highest leverage first.
+              </p>
+              <div class="space-y-1.5 max-h-64 overflow-y-auto">
+                {developQueue.map(({ note, backlinkCount }) => (
+                  <a
+                    href={`/notes/${note.id}`}
+                    data-note-slug={note.id}
+                    class="flex items-center justify-between gap-2 text-xs text-dim hover:text-accent transition-colors no-underline leading-snug"
+                  >
+                    <span class="truncate">{note.data.title}</span>
+                    <span class="flex items-center gap-1.5 shrink-0">
+                      <span class="read-marker hidden text-success" aria-label="Read">✓</span>
+                      {backlinkCount > 0 && (
+                        <span class="text-faint font-mono">{backlinkCount}</span>
+                      )}
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {stalestNotes.length > 0 && (
+            <div class="card">
+              <h2 class="eyebrow mb-4">Resurface</h2>
+              <div class="space-y-2.5">
+                {stalestNotes.map((note) => (
+                  <a
+                    href={`/notes/${note.id}`}
+                    data-note-slug={note.id}
+                    class="flex items-center justify-between gap-2 text-sm text-muted hover:text-accent transition-colors leading-snug no-underline"
+                  >
+                    <span class="truncate">{note.data.title}</span>
+                    <span class="read-marker hidden shrink-0 text-success" aria-label="Read">✓</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {recentlyUpdatedNotes.length > 0 && (
+            <div class="card">
+              <h2 class="eyebrow mb-4">Recently Updated</h2>
+              <div class="space-y-2.5 max-h-64 overflow-y-auto">
+                {recentlyUpdatedNotes.map((note) => (
+                  <a
+                    href={`/notes/${note.id}`}
+                    data-note-slug={note.id}
+                    class="flex items-center justify-between gap-2 text-sm text-muted hover:text-accent transition-colors leading-snug no-underline"
+                  >
+                    <span class="truncate">{note.data.title}</span>
+                    <span class="read-marker hidden shrink-0 text-success" aria-label="Read">✓</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+        </aside>
+
+      </div>
+    </div>
+
+  <MermaidRenderer />
+</Page>
+
+<script>
+  import { loadJSON } from '../lib/storage';
+  import { isRead, type ReadState } from '../lib/notes-read-state';
+
+  const state = loadJSON<ReadState>('notes:read-state', {});
+  document.querySelectorAll<HTMLElement>('[data-note-slug]').forEach((el) => {
+    const slug = el.dataset.noteSlug;
+    if (!slug || !isRead(state, slug)) return;
+    el.querySelector('.read-marker')?.classList.remove('hidden');
+  });
+</script>

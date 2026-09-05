@@ -1,0 +1,141 @@
+---
+import { render, type CollectionEntry } from 'astro:content';
+import Page from './Page.astro';
+import NotesSidebarTree from '../components/NotesSidebarTree.astro';
+import NotesRootLink from '../components/NotesRootLink.astro';
+import TableOfContents from '../components/TableOfContents.astro';
+import { buildNotesTree, formatTopicLabel, notesIndexHref } from '../lib/notes-tree';
+
+interface Props {
+  topicDir: string;
+  notes: CollectionEntry<'notes'>[];
+  pageTitle?: string;
+  pageDescription?: string;
+  eyebrow?: string;
+  heroTitle?: string;
+  heroDescription?: string;
+}
+
+const {
+  topicDir,
+  notes,
+  pageTitle,
+  pageDescription,
+  eyebrow = 'Topic',
+  heroTitle,
+  heroDescription,
+} = Astro.props;
+
+const topicLabel = formatTopicLabel(topicDir);
+const { rootLabel, rootPosition } = notesIndexHref(topicDir);
+
+const tree = buildNotesTree(notes);
+const hasSubtopics = tree.sections.length > 0;
+// Every topic in the current dataset has at least one subdirectory, but the
+// aside should still degrade gracefully for a future topic that doesn't —
+// otherwise it would have no way to browse its notes at all once the col-2
+// card list is gone.
+const hasNav = hasSubtopics || tree.rootNotes.length > 0;
+
+// Topic root's own README/MOC (e.g. "observability/README.md", id "observability/readme")
+// is a hand-curated overview — it's the only thing this page still renders in col-2.
+// Browsing individual notes happens entirely through the col-1 tree now, which links
+// straight to a note's own page instead of scrolling/filtering a card list here.
+const readmeNote = notes.find((n) => {
+  const parts = n.id.split('/');
+  return parts.length === 2 && parts[1] === 'readme';
+});
+// `readmeNote!` in the template below is safe: ReadmeContent is only truthy when
+// readmeNote was found, and nothing between here and there reassigns it.
+const readmeRendered = readmeNote ? await render(readmeNote) : null;
+const ReadmeContent = readmeRendered?.Content ?? null;
+const readmeHeadings = readmeRendered?.headings ?? [];
+const hasReadmeToc = readmeHeadings.some((h) => h.depth === 2 || h.depth === 3);
+---
+
+<Page
+  title={pageTitle ?? `${topicLabel} Notes — Amit Singh`}
+  description={pageDescription ?? `Notes on ${topicLabel}.`}
+>
+    <div class="max-w-9xl mx-auto px-6">
+
+      <!-- Header -->
+      <div class="mb-8">
+        <div class="flex items-center gap-2 text-xs font-mono text-faint mb-4">
+          <a href="/notes" class="hover:text-accent transition-colors">Notes</a>
+          <span>/</span>
+          <span class="text-accent">{topicLabel}</span>
+        </div>
+        <p class="section-label">{eyebrow}</p>
+        <h1 class="text-4xl font-bold text-ink mt-2">{heroTitle ?? topicLabel}</h1>
+        {heroDescription && (
+          <p class="text-muted mt-3 max-w-xl">{heroDescription}</p>
+        )}
+        <p class="text-dim font-mono text-sm mt-2">
+          {notes.length} {notes.length === 1 ? 'note' : 'notes'}
+        </p>
+      </div>
+
+      <!-- Three-column layout -->
+      <div class:list={[hasNav ? 'doc-grid' : 'doc-grid-2', 'items-start']}>
+
+        <!-- Left: subtopics nav — the only place chapters are browsed -->
+        {hasNav && (
+          <aside class="xl:sticky xl:top-28">
+            <div class="card p-4">
+              <p class="text-xs font-mono text-dim uppercase tracking-widest mb-3">{topicLabel}</p>
+              <div data-notes-tree-scroll class="flex flex-col gap-1 overflow-y-auto max-h-[calc(100vh-12rem)]">
+                {hasSubtopics ? (
+                  <>
+                    {rootPosition === 'first' && tree.rootNotes.length > 0 && (
+                      <NotesRootLink rootNotes={tree.rootNotes} rootLabel={rootLabel} />
+                    )}
+                    <NotesSidebarTree nodes={tree.sections} topicId={topicDir} />
+                    {rootPosition === 'last' && tree.rootNotes.length > 0 && (
+                      <NotesRootLink rootNotes={tree.rootNotes} rootLabel={rootLabel} />
+                    )}
+                  </>
+                ) : (
+                  <NotesRootLink rootNotes={tree.rootNotes} rootLabel={topicLabel} />
+                )}
+              </div>
+            </div>
+          </aside>
+        )}
+
+        <!-- Center: hand-curated overview only, if this topic has one -->
+        <div>
+          {ReadmeContent && (
+            <div class="card mb-8">
+              <p class="text-xs font-mono text-dim uppercase tracking-widest mb-4">Overview</p>
+              <div class="prose prose-invert prose-doc">
+                <ReadmeContent />
+              </div>
+              <a
+                href={`/notes/${readmeNote!.id}`}
+                class="inline-flex items-center gap-1 mt-6 text-xs font-mono text-faint hover:text-accent transition-colors no-underline"
+              >
+                View as page →
+              </a>
+            </div>
+          )}
+
+          <div class="mt-10">
+            <a href="/notes" class="text-sm text-accent hover:text-accent-hover font-mono flex items-center gap-2 transition-colors">
+              ← All notes
+            </a>
+          </div>
+        </div>
+
+        <!-- Right: on-this-page (README overview) -->
+        {hasReadmeToc && (
+          <aside class="space-y-6 xl:sticky xl:top-28">
+            <div class="card p-4 max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <TableOfContents headings={readmeHeadings} />
+            </div>
+          </aside>
+        )}
+
+      </div>
+    </div>
+</Page>

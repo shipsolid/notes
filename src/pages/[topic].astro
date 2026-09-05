@@ -1,0 +1,30 @@
+---
+import { getCollection } from 'astro:content';
+import TopicListing from '../layouts/TopicListing.astro';
+import { STATIC_TOPIC_METADATA, STATIC_TOPIC_PAGES } from '../lib/notes-tree';
+import { byFilenameAsc, isVisibleNote } from '../lib/notes-query';
+
+export async function getStaticPaths() {
+  return [...STATIC_TOPIC_PAGES].map((topicDir) => ({ params: { topic: topicDir } }));
+}
+
+const { topic: topicDir } = Astro.params as { topic: string };
+
+// Include hidden notes — each of these pages is the intentional entry point
+// for its section (see notes-graph.ts on hidden !== excluded).
+const allNotes = (
+  await getCollection('notes', (e) => isVisibleNote(e, { includeHidden: true, topicPrefix: topicDir }))
+).sort(byFilenameAsc);
+
+const meta = STATIC_TOPIC_METADATA[topicDir];
+---
+
+<TopicListing
+  topicDir={topicDir}
+  notes={allNotes}
+  pageTitle={meta.pageTitle}
+  pageDescription={meta.pageDescription}
+  eyebrow={meta.eyebrow}
+  heroTitle={meta.heroTitle}
+  heroDescription={meta.heroDescription}
+/>

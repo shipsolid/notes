@@ -1,0 +1,83 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import type { RelationKind } from '../lib/note-kinds';
+import { RELATION_KIND_LABELS, RELATION_KINDS } from '../lib/note-kinds';
+
+interface Props {
+  outboundRelations: { note: CollectionEntry<'notes'>; kind: RelationKind }[];
+  backlinks: { note: CollectionEntry<'notes'>; kind: RelationKind }[];
+}
+const { outboundRelations, backlinks } = Astro.props;
+
+const groups = RELATION_KINDS.map((kind) => ({
+  kind,
+  label: RELATION_KIND_LABELS[kind],
+  notes: outboundRelations.filter((r) => r.kind === kind).map((r) => r.note),
+})).filter((g) => g.notes.length > 0);
+
+// Capped total across all kind groups (not per-group) — a narrow sticky sidebar has no room for a
+// second expand/collapse control alongside the in-article one, so overflow here just links to the
+// full, uncapped "Linked from N notes" section instead.
+const SIDEBAR_BACKLINKS_LIMIT = 8;
+const rawBacklinkGroups = RELATION_KINDS.map((kind) => ({
+  kind,
+  label: RELATION_KIND_LABELS[kind],
+  notes: backlinks.filter((r) => r.kind === kind).map((r) => r.note),
+})).filter((g) => g.notes.length > 0);
+
+let remainingBacklinkSlots = SIDEBAR_BACKLINKS_LIMIT;
+const backlinkGroups = rawBacklinkGroups
+  .map((group) => {
+    const notes = group.notes.slice(0, remainingBacklinkSlots);
+    remainingBacklinkSlots -= notes.length;
+    return { ...group, notes };
+  })
+  .filter((g) => g.notes.length > 0);
+const extraBacklinksCount = Math.max(0, backlinks.length - SIDEBAR_BACKLINKS_LIMIT);
+
+const hasContent = groups.length > 0 || backlinks.length > 0;
+---
+
+{hasContent && (
+  <nav aria-label="Knowledge graph">
+    <h2 class="text-xs font-mono text-faint uppercase tracking-widest mb-3">Knowledge Graph</h2>
+    <div class="space-y-4">
+      {groups.map((group) => (
+        <div>
+          <h3 class="text-[11px] text-faint mb-1">{group.label}</h3>
+          {group.notes.map((n) => (
+            <a
+              href={`/notes/${n.id}`}
+              class="flex items-center gap-1.5 py-1 pl-2 text-xs text-dim hover:text-accent transition-colors no-underline"
+            >
+              <span class="text-faint" aria-hidden="true">└</span>
+              <span class="truncate">{n.data.title}</span>
+            </a>
+          ))}
+        </div>
+      ))}
+      {backlinkGroups.map((group) => (
+        <div>
+          <h3 class="text-[11px] text-faint mb-1">Referenced By — {group.label}</h3>
+          {group.notes.map((n) => (
+            <a
+              href={`/notes/${n.id}`}
+              class="flex items-center gap-1.5 py-1 pl-2 text-xs text-dim hover:text-accent transition-colors no-underline"
+            >
+              <span class="text-faint" aria-hidden="true">└</span>
+              <span class="truncate">{n.data.title}</span>
+            </a>
+          ))}
+        </div>
+      ))}
+      {extraBacklinksCount > 0 && (
+        <a
+          href="#linked-from"
+          class="flex items-center gap-1.5 py-1 pl-2 text-xs text-faint hover:text-accent transition-colors no-underline"
+        >
+          +{extraBacklinksCount} more →
+        </a>
+      )}
+    </div>
+  </nav>
+)}

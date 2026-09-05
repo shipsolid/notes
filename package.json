@@ -1,0 +1,35 @@
+{
+  "name": "notes",
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "test": "vitest run",
+    "check-ids": "node scripts/notes/check-ids.mjs",
+    "check-links": "node scripts/notes/check-links.mjs"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "^7.3.0",
+    "@astrojs/sitemap": "^3.7.3",
+    "@fontsource-variable/shantell-sans": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@tailwindcss/typography": "^0.5.20",
+    "astro": "^7.2.9",
+    "astro-pagefind": "^2.0.1",
+    "esbuild": "^0.28.2",
+    "js-yaml": "^5.4.1",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.4.0",
+    "github-slugger": "^2.0.0",
+    "remark-parse": "^11.0.0",
+    "typescript": "^6.0.3",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0",
+    "vitest": "^4.1.11"
+  }
+}

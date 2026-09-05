@@ -1,0 +1,120 @@
+---
+import { getCollection } from 'astro:content';
+import Page from '../layouts/Page.astro';
+import { formatTopicLabel, notesIndexHref } from '../lib/notes-tree';
+import { byUpdatedDesc, isVisibleNote } from '../lib/notes-query';
+
+const allNotes = await getCollection('notes', (e) => isVisibleNote(e, { includeHidden: true }));
+const questions = allNotes.filter((n) => n.data.kind === 'interview-question').sort(byUpdatedDesc);
+
+const topicMap = new Map<string, typeof questions>();
+for (const note of questions) {
+  const topicDir = note.id.split('/')[0];
+  if (!topicMap.has(topicDir)) topicMap.set(topicDir, []);
+  topicMap.get(topicDir)!.push(note);
+}
+const topicDirs = [...topicMap.keys()].sort((a, b) =>
+  formatTopicLabel(a).localeCompare(formatTopicLabel(b))
+);
+---
+
+<Page
+  title="Interview Questions — Notes — Amit Singh"
+  description="Notes tagged kind: interview-question, grouped by topic."
+>
+  <div class="max-w-9xl mx-auto px-6">
+      <!-- Header -->
+      <div class="mb-10">
+        <div class="flex items-center gap-2 text-xs font-mono text-faint mb-4">
+          <a href="/notes" class="hover:text-accent transition-colors">Notes</a>
+          <span>/</span>
+          <span class="text-accent">interview-questions</span>
+        </div>
+        <p class="section-label">Notebook</p>
+        <h1 class="text-4xl font-bold text-ink mt-2">Interview questions</h1>
+        <p class="text-dim mt-2 font-mono text-sm">
+          {questions.length} {questions.length === 1 ? 'note' : 'notes'} tagged{' '}
+          <code class="text-accent">kind: interview-question</code>
+        </p>
+      </div>
+
+      {questions.length === 0 ? (
+        <div class="card text-center py-16">
+          <p class="text-muted font-mono text-sm mb-2">// No notes tagged yet</p>
+          <p class="text-dim text-sm max-w-md mx-auto leading-relaxed">
+            The schema already supports it — set <code class="text-accent">kind: interview-question</code>{' '}
+            in a note's frontmatter (system-design and DSA notes are the obvious first candidates)
+            and it appears here automatically, grouped by topic. Link a question to its
+            answer/discussion note with a <code class="text-accent">relations: [{'{'}slug, kind: related{'}'}]</code>{' '}
+            entry — it'll show up on the note page's existing relations panel.
+          </p>
+        </div>
+      ) : (
+        <div class="space-y-12">
+          {topicDirs.map((topicDir) => {
+            const topicNotes = topicMap.get(topicDir)!;
+            const label = formatTopicLabel(topicDir);
+            const href = notesIndexHref(topicDir).base;
+            return (
+              <section>
+                <div class="flex items-center justify-between mb-4">
+                  <h2 class="text-sm font-mono font-semibold text-muted uppercase tracking-widest">
+                    <span class="text-accent">#</span> {label}
+                  </h2>
+                  <a
+                    href={href}
+                    class="text-xs font-mono text-faint hover:text-accent transition-colors"
+                  >
+                    All {label} notes →
+                  </a>
+                </div>
+
+                <div class="flex flex-col gap-3">
+                  {topicNotes.map((note) => {
+                    const updated = note.data.updated
+                      ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).format(note.data.updated)
+                      : null;
+                    return (
+                      <a
+                        href={`/notes/${note.id}`}
+                        class="card group flex items-start justify-between gap-4 no-underline hover:-translate-y-0.5"
+                      >
+                        <div class="min-w-0 flex-1">
+                          <h3 class="text-base font-medium text-ink group-hover:text-accent transition-colors leading-snug mb-1">
+                            {note.data.title}
+                          </h3>
+                          {note.data.description && (
+                            <p class="text-sm text-dim leading-relaxed line-clamp-2">
+                              {note.data.description}
+                            </p>
+                          )}
+                        </div>
+                        <div class="shrink-0 flex flex-col items-end gap-2 max-w-[45%]">
+                          <div class="flex flex-wrap gap-1.5 justify-end">
+                            {note.data.tags.slice(0, 4).map((t) => (
+                              <span class="tag text-[11px] py-0.5">{t}</span>
+                            ))}
+                          </div>
+                          {updated && (
+                            <span class="text-xs font-mono text-faint">{updated}</span>
+                          )}
+                        </div>
+                      </a>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+
+      <div class="mt-10">
+        <a href="/notes" class="text-sm text-accent hover:text-accent-hover font-mono flex items-center gap-2 transition-colors">
+          ← All notes
+        </a>
+      </div>
+
+    </div>
+
+</Page>

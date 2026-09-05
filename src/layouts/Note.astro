@@ -1,0 +1,417 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import Page from './Page.astro';
+import TableOfContents from '../components/TableOfContents.astro';
+import ChapterNavTree from '../components/ChapterNavTree.astro';
+import NotesGraphCanvas, { type GraphNode, type GraphEdge } from '../components/NotesGraphCanvas.astro';
+import KnowledgeGraphTree from '../components/KnowledgeGraphTree.astro';
+import MermaidRenderer from '../components/MermaidRenderer.astro';
+import { slugifyTag } from '../lib/tag-slug';
+import { getTopicColors, DEFAULT_COLOR } from '../lib/notes-graph';
+import { formatSegmentLabel, formatTopicLabel, notesIndexHref, type NotesTree } from '../lib/notes-tree';
+import type { RelationKind } from '../lib/note-kinds';
+import { SOURCE_BRANCH, SOURCE_REPO } from '../consts';
+
+interface Props {
+  note: CollectionEntry<'notes'>;
+  headings: Array<{ depth: number; slug: string; text: string }>;
+  related: CollectionEntry<'notes'>[];
+  backlinks: { note: CollectionEntry<'notes'>; kind: RelationKind }[];
+  outboundRelations: { note: CollectionEntry<'notes'>; kind: RelationKind }[];
+  localGraph: { nodes: GraphNode[]; edges: GraphEdge[] };
+  tree: NotesTree;
+  prevNote?: CollectionEntry<'notes'>;
+  nextNote?: CollectionEntry<'notes'>;
+}
+
+const {
+  note, headings, related, backlinks, outboundRelations, localGraph, tree, prevNote, nextNote,
+} = Astro.props;
+const TOPIC_COLORS = await getTopicColors();
+const { title, description, tags, updated, zettelId, noteType, kind } = note.data;
+
+const parts = note.id.split('/');
+const topicDir = parts[0];
+const topic = formatTopicLabel(topicDir);
+const { base: topicHref, rootLabel, rootPosition } = notesIndexHref(topicDir);
+
+// Every directory level between the topic and the filename, e.g. for
+// "shipsolid/app-signal-forge/architecture/adrs/0001.md" this is
+// ["app-signal-forge", "architecture", "adrs"] — arbitrary depth, not capped
+// at one extra level like the old isShipsolid-only special case was. Plain
+// labels, not links — a book/chapter directory has no page of its own to
+// send a click to (the topic listing page browses them via its own tree).
+const dirSegments = parts.slice(1, -1);
+const crumbs = dirSegments.map((seg) => formatSegmentLabel(seg));
+
+// In-article backlinks: explicit-kind relations (depends_on/compared_to/supersedes) surfaced
+// before the untyped wikilink-default 'related' kind, then capped — hub notes can have 100+
+// backlinks, and Array.prototype.sort is stable so each kind bucket keeps its original
+// (first-seen-at-build) order.
+const BACKLINKS_PREVIEW_LIMIT = 12;
+const sortedBacklinks = [...backlinks].sort(
+  (a, b) => Number(a.kind === 'related') - Number(b.kind === 'related')
+);
+
+const formattedUpdated = updated
+  ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).format(updated)
+  : null;
+
+// `filePath` (repo-relative, original case, extension intact) rather than `id`:
+// the Content Layer id is a slug — lowercased and github-slugger'd — so it no
+// longer round-trips to a real path (`.../README.md` is id `.../readme`).
+// Per-segment encoded defensively — no current filenames need it (kebab-case
+// is enforced), but a whole-string encode would also escape the "/" path
+// separators and break the edit URL's directory structure.
+// non-null: the glob loader always sets filePath; it's optional on the type only
+// for loaders that synthesize entries, and reconstructing a path from `id` here
+// would rebuild exactly the lowercased `.md` URL this edit link had to stop using.
+const notePath = note.filePath!;
+const editUrl = `https://github.com/${SOURCE_REPO}/edit/${SOURCE_BRANCH}/${notePath
+  .split('/')
+  .map(encodeURIComponent)
+  .join('/')}`;
+---
+
+<Page title={`${title} — Notes — Amit Singh`} description={description ?? title} article>
+  <!-- Reading progress bar -->
+  <div
+    id="progress-bar"
+    data-note-slug={note.id}
+    class="fixed top-0 left-0 z-[100] h-0.5 bg-accent"
+    style="width:0%;transition:width 0.1s linear"
+  ></div>
+
+    <!-- Article header -->
+    <header class="max-w-9xl mx-auto px-6 mb-12">
+
+      <!-- Breadcrumb -->
+      <div class="flex items-center gap-2 text-xs font-mono text-faint mb-4 flex-wrap">
+        <a href="/notes" class="hover:text-accent transition-colors">Notes</a>
+        <span>/</span>
+        <a href={topicHref} class="text-accent hover:text-accent-hover transition-colors">{topic}</a>
+        {crumbs.map((label) => (
+          <>
+            <span>/</span>
+            <span>{label}</span>
+          </>
+        ))}
+      </div>
+
+      <h1 class="text-3xl md:text-4xl font-bold text-ink leading-tight mb-4 flex items-center gap-3">
+        {title}
+        {noteType === 'moc' && (
+          <span class="tag text-[11px] py-0.5 text-accent border-accent/40 bg-accent/10" title="Map of Content — a hub note that curates links to related notes">
+            MOC
+          </span>
+        )}
+        <span
+          id="read-badge"
+          class="tag hidden text-[11px] py-0.5 text-success border-success/20 bg-success/10"
+          title="You've read this note"
+        >
+          ✓ Read
+        </span>
+      </h1>
+
+      {description && (
+        <p class="text-lg text-muted mb-6">{description}</p>
+      )}
+
+      <div class="flex flex-wrap items-center gap-3 text-sm text-dim font-mono border-t border-line pt-4">
+        {formattedUpdated && (
+          <span>Updated {formattedUpdated}</span>
+        )}
+        {zettelId && (
+          <>
+            <span class="text-faint">·</span>
+            <span class="text-faint" title="Permanent note identifier">§{zettelId}</span>
+          </>
+        )}
+        {tags.length > 0 && (
+          <>
+            <span class="text-faint">·</span>
+            <div class="flex flex-wrap gap-2">
+              {tags.map((tag) => (
+                <a
+                  href={`/notes/tag/${slugifyTag(tag)}`}
+                  class="tag no-underline hover:bg-accent/20 hover:border-accent/40 transition-colors"
+                >{tag}</a>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </header>
+
+    <!-- Three-column: left nav + content + TOC. Site column standard (shared by /notes/,
+         TopicListing, /search): below xl it stacks to one column
+         (chapter nav + TOC drop into the <details> block below); xl–3xl gets a proportional
+         260 / 1fr / 260; at 3xl (1760px, the max-w-9xl shell) it locks to
+         300 / minmax(1000px,1fr) / 300 — 300 + 300 + gap-10·2 = 680, leaving the content
+         column ≥ 1000px inside the 1712px shell, no overflow. -->
+    <div class="max-w-9xl mx-auto px-6">
+      <div class="doc-grid">
+
+        <!-- Left nav -->
+        <aside class="hidden xl:block">
+          <div data-notes-tree-scroll class="card sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto">
+            <p class="text-xs font-mono text-dim uppercase tracking-widest mb-4">{topic}</p>
+            <div id="chapter-nav-source">
+              <ChapterNavTree tree={tree} rootLabel={rootLabel} rootPosition={rootPosition} topicId={topicDir} />
+            </div>
+          </div>
+        </aside>
+
+        <!-- Mobile/tablet nav: same content as the two hidden xl:block asides,
+             collapsed by default so a reader lands on the article first, not
+             a wall of chapter links. The chapter tree itself isn't
+             re-rendered here — it's cloned client-side from
+             #chapter-nav-source (below), which stays in the DOM below xl
+             too (`hidden xl:block` only affects what's
+             *shown*, not what's downloaded) — a topic's full nav tree would
+             otherwise ship twice on every note page. -->
+        <div class="xl:hidden space-y-3">
+          <details class="card">
+            <summary class="cursor-pointer text-xs font-mono text-dim uppercase tracking-widest">
+              Chapter Navigation
+            </summary>
+            <div id="chapter-nav-mobile" class="mt-4"></div>
+          </details>
+          <details class="card">
+            <summary class="cursor-pointer text-xs font-mono text-dim uppercase tracking-widest">
+              On This Page
+            </summary>
+            <div class="mt-4">
+              <TableOfContents headings={headings} />
+              <div class="mt-8 pt-6 border-t border-line">
+                <KnowledgeGraphTree outboundRelations={outboundRelations} backlinks={backlinks} />
+              </div>
+            </div>
+          </details>
+        </div>
+        <script>
+          const chapterNavSource = document.getElementById('chapter-nav-source');
+          const chapterNavMobile = document.getElementById('chapter-nav-mobile');
+          if (chapterNavSource && chapterNavMobile) {
+            chapterNavMobile.innerHTML = chapterNavSource.innerHTML;
+          }
+        </script>
+
+        <!-- Article -->
+        <article class="min-w-0" data-pagefind-body data-pagefind-filter="type:Note">
+          <span hidden data-pagefind-meta={`title:${title}`}></span>
+          <span hidden data-pagefind-meta={`slug:${note.id}`}></span>
+          {updated && <span hidden data-pagefind-meta={`date:${updated.toISOString()}`}></span>}
+          <span hidden data-pagefind-filter={`domain:${topic}`}></span>
+          <span hidden data-pagefind-filter={`kind:${kind}`}></span>
+          {tags.map((tag) => <span hidden data-pagefind-filter={`tag:${tag}`}></span>)}
+          <div class="prose prose-invert prose-doc">
+            <slot />
+          </div>
+
+          <!-- Local graph: this note + its direct link neighbors, 1-hop -->
+          {localGraph.edges.length > 0 && (
+            <div class="mt-16 pt-8 border-t border-line">
+              <p class="text-xs font-mono text-dim uppercase tracking-widest mb-4">Local graph</p>
+              <div class="card p-0 overflow-hidden">
+                <NotesGraphCanvas
+                  nodes={localGraph.nodes}
+                  edges={localGraph.edges}
+                  topicColors={TOPIC_COLORS}
+                  defaultColor={DEFAULT_COLOR}
+                  viewW={700}
+                  viewH={400}
+                  heightClass="h-96"
+                  idSuffix="-local"
+                  currentSlug={note.id}
+                />
+                <a
+                  href="/notes/graph"
+                  class="block px-4 py-2 text-[11px] text-dim hover:text-accent border-t border-line transition-colors no-underline"
+                >
+                  Full graph →
+                </a>
+              </div>
+            </div>
+          )}
+
+          <!-- Backlinks: notes that link to this one, computed from the wiki-link / markdown-link
+               graph. Kept flat (not grouped by kind, unlike the sidebar's KnowledgeGraphTree) —
+               on hub notes the untyped 'related' kind dominates almost all entries, so grouping
+               here would produce one giant bucket and a couple stragglers for no real scannability
+               gain. Capped at BACKLINKS_PREVIEW_LIMIT with a "show all" toggle instead, since hub
+               notes can have 100+ backlinks. -->
+          {backlinks.length > 0 && (
+            <div class="mt-16 pt-8 border-t border-line" id="linked-from">
+              <p class="text-xs font-mono text-dim uppercase tracking-widest mb-4">
+                Linked from {backlinks.length} {backlinks.length === 1 ? 'note' : 'notes'}
+              </p>
+              <div class="grid gap-3">
+                {sortedBacklinks.map((b, i) => (
+                  <a
+                    href={`/notes/${b.note.id}`}
+                    class:list={['card group flex items-start justify-between gap-4 no-underline hover:-translate-y-0.5', { hidden: i >= BACKLINKS_PREVIEW_LIMIT }]}
+                    data-backlink-extra={i >= BACKLINKS_PREVIEW_LIMIT ? 'true' : undefined}
+                  >
+                    <div class="min-w-0">
+                      <p class="text-sm font-medium text-ink group-hover:text-accent transition-colors leading-snug">
+                        {b.note.data.title}
+                      </p>
+                      {b.note.data.description && (
+                        <p class="text-xs text-dim mt-1 line-clamp-1">{b.note.data.description}</p>
+                      )}
+                    </div>
+                    <svg class="w-4 h-4 text-faint group-hover:text-accent transition-colors shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                  </a>
+                ))}
+              </div>
+              {sortedBacklinks.length > BACKLINKS_PREVIEW_LIMIT && (
+                <button
+                  id="backlinks-show-all"
+                  class="mt-4 text-xs font-mono text-dim hover:text-accent transition-colors"
+                >
+                  Show all {sortedBacklinks.length} notes
+                </button>
+              )}
+            </div>
+          )}
+
+          <!-- Related notes: tag-overlap scored, same-topic/recency/zettelId as tie-breaks -->
+          {related.length > 0 && (
+            <div class="mt-16 pt-8 border-t border-line">
+              <p class="text-xs font-mono text-dim uppercase tracking-widest mb-4">Related notes</p>
+              <div class="grid gap-3">
+                {related.map((n) => (
+                  <a
+                    href={`/notes/${n.id}`}
+                    class="card group flex items-start justify-between gap-4 no-underline hover:-translate-y-0.5"
+                  >
+                    <div class="min-w-0">
+                      <p class="text-sm font-medium text-ink group-hover:text-accent transition-colors leading-snug">
+                        {n.data.title}
+                      </p>
+                      {n.data.description && (
+                        <p class="text-xs text-dim mt-1 line-clamp-1">{n.data.description}</p>
+                      )}
+                    </div>
+                    <svg class="w-4 h-4 text-faint group-hover:text-accent transition-colors shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <!-- Back links -->
+          <div class="mt-10 flex items-center justify-between">
+            <a href="/notes" class="text-sm text-accent hover:text-accent-hover font-mono flex items-center gap-2 transition-colors">
+              ← All notes
+            </a>
+            <div class="flex items-center gap-4">
+              <a href={topicHref} class="text-sm text-dim hover:text-body transition-colors">
+                {topic} notes
+              </a>
+              <a href={editUrl} target="_blank" rel="noopener noreferrer" class="text-sm text-dim hover:text-body transition-colors">
+                Edit on GitHub
+              </a>
+            </div>
+          </div>
+
+          <!-- Prev/Next: sequential navigation in the same order as the left nav tree -->
+          {(Boolean(prevNote) || Boolean(nextNote)) && (
+            <div class="mt-6 pt-6 border-t border-line grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                {prevNote && (
+                  <a
+                    href={`/notes/${prevNote.id}`}
+                    class="card group flex flex-col gap-1 no-underline hover:-translate-y-0.5"
+                  >
+                    <span class="text-xs font-mono text-faint">← Previous</span>
+                    <span class="text-sm font-medium text-ink group-hover:text-accent transition-colors leading-snug">
+                      {prevNote.data.title}
+                    </span>
+                  </a>
+                )}
+              </div>
+              <div class="sm:text-right">
+                {nextNote && (
+                  <a
+                    href={`/notes/${nextNote.id}`}
+                    class="card group flex flex-col gap-1 no-underline hover:-translate-y-0.5 sm:items-end"
+                  >
+                    <span class="text-xs font-mono text-faint">Next →</span>
+                    <span class="text-sm font-medium text-ink group-hover:text-accent transition-colors leading-snug">
+                      {nextNote.data.title}
+                    </span>
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+        </article>
+
+        <!-- TOC sidebar -->
+        <aside class="hidden xl:block">
+          <div class="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto">
+            <TableOfContents headings={headings} />
+            <div class="mt-8 pt-6 border-t border-line">
+              <KnowledgeGraphTree outboundRelations={outboundRelations} backlinks={backlinks} />
+            </div>
+          </div>
+        </aside>
+
+      </div>
+    </div>
+
+  <MermaidRenderer />
+</Page>
+
+<style>
+  .wiki-link-unresolved {
+    color: var(--color-dim);
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+    cursor: help;
+  }
+</style>
+
+<script>
+import { loadJSON, saveJSON } from '../lib/storage';
+import { recordScrollProgress, isRead, type ReadState } from '../lib/notes-read-state';
+import { initCopyButtons, initReadingProgress } from '../lib/reading-enhancements';
+
+const READ_STATE_KEY = 'notes:read-state';
+
+const readBadge = document.getElementById('read-badge');
+const noteSlug = document.getElementById('progress-bar')?.dataset.noteSlug;
+
+function refreshReadBadge(read: boolean) {
+  readBadge?.classList.toggle('hidden', !read);
+}
+
+if (noteSlug) {
+  refreshReadBadge(isRead(loadJSON<ReadState>(READ_STATE_KEY, {}), noteSlug));
+}
+
+initReadingProgress((scrollPct) => {
+  if (!noteSlug) return;
+  const state = loadJSON<ReadState>(READ_STATE_KEY, {});
+  const next = recordScrollProgress(state, noteSlug, scrollPct, new Date().toISOString());
+  if (next !== state) {
+    saveJSON(READ_STATE_KEY, next);
+    refreshReadBadge(isRead(next, noteSlug));
+  }
+});
+
+initCopyButtons();
+
+document.getElementById('backlinks-show-all')?.addEventListener('click', (e) => {
+  const btn = e.currentTarget as HTMLElement;
+  document.querySelectorAll('[data-backlink-extra]').forEach((el) => el.classList.remove('hidden'));
+  btn.remove();
+});
+</script>

@@ -1,0 +1,30 @@
+---
+// The one page shell. Every page in this standalone site is a Notes page —
+// the subNavFor()-keyed branching from the source portfolio monorepo (which
+// had to pick between a plain page, /tools, /notes, and /gita) collapses to
+// one hard-coded case here, the same simplification the sibling gita repo's
+// extraction made.
+import Base from './Base.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  ogImage?: string;
+  article?: boolean;
+  /** Extra classes appended to <main>. */
+  mainClass?: string;
+}
+
+const { title, description, ogImage, article = false, mainClass = '' } = Astro.props;
+---
+
+<Base title={title} description={description} ogImage={ogImage} article={article}>
+  <Header />
+  <main id="main" tabindex="-1" class:list={['pt-36', 'pb-20', mainClass]}>
+    <slot />
+  </main>
+  <Footer />
+  <slot name="after" />
+</Base>

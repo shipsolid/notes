@@ -1,0 +1,86 @@
+---
+import { getCollection } from 'astro:content';
+import Page from '../layouts/Page.astro';
+import { getTopicReadiness } from '../lib/notes-readiness';
+import { isVisibleNote } from '../lib/notes-query';
+
+// includeHidden: true — this is a personal readiness gauge, not a public
+// listing, so it should count every real note (drafts excluded, hidden
+// included) or topics like shipsolid/projects would silently undercount.
+const notes = await getCollection('notes', (e) => isVisibleNote(e, { includeHidden: true }));
+const topics = getTopicReadiness(notes);
+
+const totalNotes = notes.length;
+const totalStubs = topics.reduce((sum, t) => sum + t.stubCount, 0);
+const totalDeveloped = totalNotes - totalStubs;
+const overallPct = totalNotes > 0 ? Math.round((totalDeveloped / totalNotes) * 100) : 0;
+const totalInterviewQuestions = topics.reduce((sum, t) => sum + t.interviewQuestionCount, 0);
+---
+
+<Page
+  title="Readiness — Notes — Amit Singh"
+  description="Per-topic readiness: how much of each notes topic is written out vs. still a stub, and how many notes are tagged as interview questions."
+>
+  <div class="max-w-9xl mx-auto px-6">
+      <!-- Header -->
+      <div class="mb-10">
+        <div class="flex items-center gap-2 text-xs font-mono text-faint mb-4">
+          <a href="/notes" class="hover:text-accent transition-colors">Notes</a>
+          <span>/</span>
+          <span class="text-accent">readiness</span>
+        </div>
+        <p class="section-label">Notebook</p>
+        <h1 class="text-4xl font-bold text-ink mt-2">Readiness</h1>
+        <p class="text-dim mt-2 font-mono text-sm">
+          {overallPct}% developed ({totalDeveloped}/{totalNotes} notes) &middot; {totalInterviewQuestions}{' '}
+          tagged <code class="text-accent">interview-question</code>
+        </p>
+        <p class="text-muted mt-3 max-w-2xl text-sm leading-relaxed">
+          Weakest topic first. "Developed" means the note's <code>[stub: ...]</code> marker is
+          gone — the schema's <code>maturity</code> field isn't used on any note yet, so this
+          reads directly off actual content instead.
+        </p>
+      </div>
+
+      <!-- Topic rows -->
+      <div class="card divide-y divide-line">
+        {topics.map((t) => (
+          <a
+            href={t.href}
+            class="flex flex-col sm:flex-row sm:items-center gap-3 py-4 first:pt-0 last:pb-0 no-underline group"
+          >
+            <div class="flex items-center justify-between sm:w-56 shrink-0">
+              <span class="text-sm text-ink group-hover:text-accent transition-colors font-medium">
+                {t.label}
+              </span>
+              <span class="text-xs font-mono text-faint sm:hidden">{t.total}</span>
+            </div>
+
+            <div class="flex-1 min-w-0">
+              <div class="h-2 rounded-full bg-surface-hover overflow-hidden flex">
+                <div class="h-full bg-accent" style={`width: ${t.readinessPct}%`} />
+              </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 sm:w-64 shrink-0 text-xs font-mono">
+              <span class="text-dim hidden sm:inline">{t.developedCount}/{t.total}</span>
+              <span class="text-body w-10 text-right">{t.readinessPct}%</span>
+              {t.interviewQuestionCount > 0 ? (
+                <span class="tag text-[11px] py-0.5">{t.interviewQuestionCount} Q</span>
+              ) : (
+                <span class="w-[46px]" aria-hidden="true" />
+              )}
+            </div>
+          </a>
+        ))}
+      </div>
+
+      <div class="mt-10">
+        <a href="/notes" class="text-sm text-accent hover:text-accent-hover font-mono flex items-center gap-2 transition-colors">
+          ← All notes
+        </a>
+      </div>
+
+    </div>
+
+</Page>

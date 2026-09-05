@@ -1,0 +1,68 @@
+---
+interface Props {
+  headings: Array<{ depth: number; slug: string; text: string }>;
+}
+const { headings } = Astro.props;
+const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
+---
+
+{toc.length > 0 && (
+  <nav aria-label="On this page">
+    <h2 class="text-xs font-mono text-faint uppercase tracking-widest mb-3">On this page</h2>
+    <ul class="space-y-0.5 border-l border-line">
+      {toc.map((h) => (
+        <li>
+          <a
+            href={`#${h.slug}`}
+            data-slug={h.slug}
+            class:list={[
+              'toc-link block py-1 leading-snug transition-colors duration-150 border-l-2 border-transparent -ml-px',
+              h.depth === 3
+                ? 'pl-5 text-xs text-faint hover:text-muted'
+                : 'pl-3 text-sm text-dim hover:text-body',
+            ]}
+          >
+            {h.text}
+          </a>
+        </li>
+      ))}
+    </ul>
+  </nav>
+)}
+
+<style>
+  .toc-link[data-active='true'] {
+    color: rgb(var(--color-accent-rgb));
+    border-color: rgb(var(--color-accent-rgb));
+  }
+</style>
+
+<script>
+// This component can render twice on one page (desktop sidebar + mobile
+// details block, toggled via CSS breakpoints so both exist in the DOM at
+// once) — `links` is filtered to only the currently-visible instance so the
+// active-highlight doesn't silently land on a hidden copy.
+const links = [...document.querySelectorAll<HTMLAnchorElement>('.toc-link')].filter(
+  (l) => l.offsetParent !== null
+);
+if (links.length) {
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          links.forEach((l) => l.removeAttribute('data-active'));
+          const active = links.find((l) => l.dataset.slug === entry.target.id);
+          if (active) active.setAttribute('data-active', 'true');
+          break;
+        }
+      }
+    },
+    { rootMargin: '-10% 0% -80% 0%', threshold: 0 }
+  );
+
+  links.forEach((l) => {
+    const el = document.getElementById(l.dataset.slug ?? '');
+    if (el) observer.observe(el);
+  });
+}
+</script>

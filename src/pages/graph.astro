@@ -1,0 +1,93 @@
+---
+import Page from '../layouts/Page.astro';
+import NotesGraphCanvas from '../components/NotesGraphCanvas.astro';
+import GraphLegend from '../components/GraphLegend.astro';
+import { getNotesGraph, getTopicColors, DEFAULT_COLOR, topicOf, getOrphanNotes } from '../lib/notes-graph';
+
+const { allNotes, edges } = await getNotesGraph();
+const TOPIC_COLORS = await getTopicColors();
+
+const nodes = allNotes.map((note) => ({
+  slug: note.id,
+  title: note.data.title,
+  topic: topicOf(note.id),
+  noteType: note.data.noteType,
+}));
+
+const topics = [...new Set(nodes.map((n) => n.topic))].sort();
+const orphans = getOrphanNotes(allNotes, edges);
+---
+
+<Page
+  title="Note graph — Amit Singh"
+  description="Visual graph of how notes in the notebook link to each other."
+>
+  <div class="max-w-9xl mx-auto px-6">
+      <!-- Header -->
+      <div class="mb-8">
+        <div class="flex items-center gap-2 text-xs font-mono text-faint mb-4">
+          <a href="/notes" class="hover:text-accent transition-colors">Notes</a>
+          <span>/</span>
+          <span class="text-accent">Graph</span>
+        </div>
+        <p class="section-label">Notebook</p>
+        <h1 class="text-4xl font-bold text-ink mt-2">Note graph</h1>
+        <p class="text-muted mt-3 max-w-lg">
+          {nodes.length} notes, {edges.length} links. Hover a node to see its neighbors, click to open it, drag to pan, scroll to zoom.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-[1fr_240px] gap-8 items-start">
+
+        <!-- Graph canvas -->
+        <div class="card p-0 overflow-hidden">
+          <NotesGraphCanvas
+            nodes={nodes}
+            edges={edges}
+            topicColors={TOPIC_COLORS}
+            defaultColor={DEFAULT_COLOR}
+            viewW={900}
+            viewH={640}
+            heightClass="h-[640px]"
+          />
+        </div>
+
+        <!-- Sidebar -->
+        <aside class="space-y-6">
+          <div class="card">
+            <p class="text-xs font-mono text-dim uppercase tracking-widest mb-3">Legend</p>
+            <GraphLegend topics={topics} topicColors={TOPIC_COLORS} defaultColor={DEFAULT_COLOR} svgId="graph-svg" />
+            <p class="text-[11px] text-faint mt-3 leading-snug">Click a topic to hide/show it.</p>
+          </div>
+
+          {orphans.length > 0 && (
+            <div class="card">
+              <p class="text-xs font-mono text-dim uppercase tracking-widest mb-3">
+                Orphans ({orphans.length})
+              </p>
+              <p class="text-[11px] text-faint mb-3 leading-snug">No incoming or outgoing links.</p>
+              <div class="space-y-1.5 max-h-64 overflow-y-auto">
+                {orphans.map((n) => (
+                  <a
+                    href={`/notes/${n.id}`}
+                    class="block text-xs text-dim hover:text-accent transition-colors no-underline leading-snug"
+                  >
+                    {n.data.title}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+        </aside>
+
+      </div>
+
+      <div class="mt-10">
+        <a href="/notes" class="text-sm text-accent hover:text-accent-hover font-mono flex items-center gap-2 transition-colors">
+          ← All notes
+        </a>
+      </div>
+
+    </div>
+
+</Page>

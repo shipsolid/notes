@@ -1,0 +1,51 @@
+---
+import { getCollection } from 'astro:content';
+import Page from '../layouts/Page.astro';
+import { getTagIndex } from '../lib/notes-tags';
+import { isVisibleNote } from '../lib/notes-query';
+
+const notes = await getCollection('notes', (e) => isVisibleNote(e));
+const tags = getTagIndex(notes);
+---
+
+<Page
+  title="All Tags — Notes — Amit Singh"
+  description="Every tag used across the notes collection, with note counts."
+>
+  <div class="max-w-9xl mx-auto px-6">
+      <!-- Header -->
+      <div class="mb-10">
+        <div class="flex items-center gap-2 text-xs font-mono text-faint mb-4">
+          <a href="/notes" class="hover:text-accent transition-colors">Notes</a>
+          <span>/</span>
+          <span class="text-accent">tags</span>
+        </div>
+        <p class="section-label">Notebook</p>
+        <h1 class="text-4xl font-bold text-ink mt-2">All tags</h1>
+        <p class="text-dim mt-2 font-mono text-sm">
+          {tags.length} {tags.length === 1 ? 'tag' : 'tags'} across {notes.length} notes
+        </p>
+      </div>
+
+      <!-- Tag cloud -->
+      <div class="flex flex-wrap gap-2">
+        {tags.map(({ slug, label, count }) => (
+          <a
+            href={`/notes/tag/${slug}`}
+            class="tag no-underline hover:bg-accent/20 hover:border-accent/40 transition-colors flex items-center gap-1.5"
+          >
+            {label}
+            <span class="text-faint">{count}</span>
+          </a>
+        ))}
+      </div>
+
+      <div class="mt-10">
+        <a href="/notes" class="text-sm text-accent hover:text-accent-hover font-mono flex items-center gap-2 transition-colors">
+          ← All notes
+        </a>
+      </div>
+
+    </div>
+
+</Page>

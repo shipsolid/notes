@@ -1,0 +1,124 @@
+---
+import Page from '../layouts/Page.astro';
+import { runLinkCheck } from '../../scripts/notes/link-check-core.mjs';
+
+const report = runLinkCheck();
+const total =
+  report.brokenMdLinks.length +
+  report.escapedLinks.length +
+  report.brokenDirectFileLinks.length +
+  report.readmeCaseMismatches.length +
+  report.unresolvedWikiLinks.length +
+  report.ambiguousWikiLinks.length +
+  report.brokenAnchors.length +
+  report.brokenRelations.length;
+
+// Same categories, titles, and row phrasing as check-links.mjs's section() calls.
+const categories = [
+  {
+    title: 'Broken markdown links (dead)',
+    items: report.brokenMdLinks,
+    render: (i: any) => `${i.file}:${i.line}  -> ${i.target}`,
+  },
+  {
+    title: 'Markdown links escaping the collection',
+    items: report.escapedLinks,
+    render: (i: any) => `${i.file}:${i.line}  -> ${i.target}  (resolves to ${i.backingFile}, outside src/content/notes)`,
+  },
+  {
+    title: 'Broken direct file references (non-.md links)',
+    items: report.brokenDirectFileLinks,
+    render: (i: any) => `${i.file}:${i.line}  -> ${i.target}`,
+  },
+  {
+    title: 'README case-fold mismatches (resolved, but will 404 on deploy)',
+    items: report.readmeCaseMismatches,
+    render: (i: any) => `${i.file}:${i.line}  -> ${i.target}  (rewritten href ${i.rewrittenHref}, real page is ${i.actualHref})`,
+  },
+  {
+    title: 'Unresolved wikilinks',
+    items: report.unresolvedWikiLinks,
+    render: (i: any) => `${i.file}:${i.line}  [[${i.target}]]`,
+  },
+  {
+    title: 'Ambiguous wikilinks',
+    items: report.ambiguousWikiLinks,
+    render: (i: any) => `${i.file}:${i.line}  [[${i.target}]]  could mean: ${i.candidates.join(', ')}`,
+  },
+  {
+    title: 'Broken heading anchors (note resolves, #heading does not)',
+    items: report.brokenAnchors,
+    render: (i: any) => `${i.file}:${i.line}  [[${i.target}]]  (note: ${i.noteSlug})`,
+  },
+  {
+    title: 'Broken relations',
+    items: report.brokenRelations,
+    render: (i: any) => `${i.file}:${i.line}  relations -> ${i.target} (${i.kind})`,
+  },
+].filter((c) => c.items.length > 0);
+---
+
+<Page
+  title="Link Health — Notes — Amit Singh"
+  description="Build-time audit of broken markdown links, wikilinks, and relations across the notes collection."
+>
+  <div class="max-w-9xl mx-auto px-6">
+      <!-- Header -->
+      <div class="mb-10">
+        <div class="flex items-center gap-2 text-xs font-mono text-faint mb-4">
+          <a href="/notes" class="hover:text-accent transition-colors">Notes</a>
+          <span>/</span>
+          <span class="text-accent">link-health</span>
+        </div>
+        <p class="section-label">Notebook</p>
+        <h1 class="text-4xl font-bold text-ink mt-2">Link Health</h1>
+        <p class="text-dim mt-2 font-mono text-sm">
+          {total} finding{total === 1 ? '' : 's'} across {report.files.length} notes
+        </p>
+        <p class="text-muted mt-3 max-w-2xl text-sm leading-relaxed">
+          Cross-checks GitHub-style markdown links, <code>[[wikilinks]]</code>, and <code>relations</code>{' '}
+          frontmatter against the resolution rules the build actually applies — the same audit the
+          CI/pre-commit check runs, rendered here for browsing.
+        </p>
+      </div>
+
+      {total === 0 ? (
+        <div class="card text-center py-20">
+          <div class="text-5xl mb-6">✓</div>
+          <p class="text-body font-mono text-sm">No broken links found</p>
+        </div>
+      ) : (
+        <div class="space-y-8">
+          {categories.map((category) => (
+            <section class="card">
+              <p class="text-xs font-mono text-dim uppercase tracking-widest mb-4">
+                {category.title} ({category.items.length})
+              </p>
+              <div class="space-y-1.5 font-mono text-xs">
+                {category.items.map((item: any) => (
+                  item.sourceSlug ? (
+                    <a
+                      href={`/notes/${item.sourceSlug}/`}
+                      class="block text-muted hover:text-accent transition-colors leading-relaxed no-underline"
+                    >
+                      {category.render(item)}
+                    </a>
+                  ) : (
+                    <p class="text-muted leading-relaxed">{category.render(item)}</p>
+                  )
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+
+      <div class="mt-10">
+        <a href="/notes" class="text-sm text-accent hover:text-accent-hover font-mono flex items-center gap-2 transition-colors">
+          ← All notes
+        </a>
+      </div>
+
+    </div>
+
+</Page>

@@ -1,0 +1,494 @@
+---
+import Page from '../layouts/Page.astro';
+---
+
+<Page
+  title="Search Notes — Amit Singh"
+  description="Search across all notes."
+>
+  <div class="max-w-9xl mx-auto px-6">
+      <div class="mb-8">
+        <p class="section-label">Search</p>
+        <h1 class="text-4xl font-bold text-ink mt-2">Search</h1>
+        <p class="text-dim text-sm font-mono mt-2">Full-text search across all notes</p>
+      </div>
+      <div role="search" class="mb-6">
+        <label for="search-input" class="sr-only">Search notes and posts</label>
+        <input
+          id="search-input"
+          type="text"
+          autocomplete="off"
+          placeholder="Search notes and posts…"
+          aria-describedby="result-count"
+          class="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink
+                 font-mono text-sm placeholder:text-faint outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/70
+                 transition-colors"
+        />
+      </div>
+
+      <p id="result-count" role="status" aria-live="polite" class="text-dim font-mono text-sm mb-6">Loading…</p>
+
+      <div id="search-grid" class="grid gap-10 items-start">
+        <aside class="xl:sticky xl:top-28">
+          <div id="facet-sidebar" class="card p-4 flex flex-col gap-6"></div>
+        </aside>
+
+        <div>
+          <div id="results-list" class="flex flex-col gap-4"></div>
+          <p class="hidden text-sm font-mono text-faint py-8 text-center" id="empty-state">
+            No results match your search.
+          </p>
+          <div class="mt-8 text-center">
+            <button id="load-more-btn" class="btn-outline hidden">Load more</button>
+          </div>
+        </div>
+
+        <aside class="xl:sticky xl:top-28">
+          <div id="concepts-panel" class="card p-4 hidden"></div>
+        </aside>
+      </div>
+    </div>
+
+</Page>
+
+<style is:global>
+  /* Tailwind 4 compiles each <style> block in isolation, so @apply here can't
+     see the theme unless this block points at the stylesheet that defines it.
+     @reference loads global.css for its @theme/@custom-variant only — it emits
+     no CSS of its own, so nothing is duplicated into the page bundle. */
+  @reference '../styles/global.css';
+
+  /* Injected result-card markup isn't scoped by Astro, so the <mark> highlight rule lives here. */
+  .search-excerpt mark {
+    @apply bg-accent/20 text-accent-hover rounded-xs px-0.5 not-italic;
+  }
+
+  /* Linked-concepts panel: also injected markup, not scoped by Astro. */
+  .breadcrumb-trail {
+    @apply flex flex-wrap items-center gap-1.5 font-mono text-sm;
+  }
+  .crumb {
+    @apply text-dim hover:text-accent transition-colors underline decoration-dotted underline-offset-2;
+  }
+  .crumb-sep {
+    @apply text-faint;
+  }
+  .concept-tree {
+    @apply flex flex-col;
+  }
+  .concept-node {
+    @apply flex items-baseline gap-2 w-full text-left px-1 py-1 rounded text-muted text-xs
+           hover:bg-accent/10 hover:text-accent-hover transition-colors cursor-pointer;
+  }
+  .tree-connector {
+    @apply text-faint shrink-0;
+  }
+
+  /* Search results grid — the site column standard, expressed in CSS rather
+     than toggled Tailwind utilities: the third (Linked-Concepts) column is
+     switched on at runtime via #search-grid.has-concepts, and toggling two
+     same-breakpoint grid-cols utilities is source-order-fragile. Below xl:
+     one column. xl–3xl: proportional 260 / 1fr (+ 260). At 3xl (1760px, the
+     max-w-9xl shell): 300 / minmax(1000px,1fr) (+ 300). */
+  #search-grid { grid-template-columns: 1fr; }
+  @media (min-width: 1280px) {
+    #search-grid { grid-template-columns: 260px 1fr; }
+    #search-grid.has-concepts { grid-template-columns: 260px 1fr 260px; }
+  }
+  @media (min-width: 1760px) {
+    #search-grid { grid-template-columns: 300px minmax(1000px, 1fr); }
+    #search-grid.has-concepts { grid-template-columns: 300px minmax(1000px, 1fr) 300px; }
+  }
+</style>
+
+<script is:inline type="module">
+  // buildTitleIndex/scoreAnchorCandidates come from src/lib/search-anchor.ts
+  // — the same module vitest tests directly (src/lib/search-anchor.test.ts).
+  // This script stays is:inline (see the pagefind import below for why), so
+  // it can't use a static `import` against a TS source file; main() instead
+  // dynamically imports /search-anchor.js, a plain-JS transpile of that same
+  // file served by src/pages/search-anchor.js.ts — single source of truth,
+  // real test coverage, no change to the fragile is:inline/pagefind setup.
+  let buildTitleIndex;
+  let scoreAnchorCandidates;
+
+  const FACET_LABELS = { type: 'Type', domain: 'Domain', kind: 'Kind', tag: 'Tag' };
+  const PAGE_SIZE = 10;
+  const MAX_SUB_RESULTS = 2;
+  const DEBOUNCE_MS = 250;
+  const ANCHOR_SCAN_LIMIT = 20;
+
+  const searchInput = document.getElementById('search-input');
+  const resultCountEl = document.getElementById('result-count');
+  const resultsList = document.getElementById('results-list');
+  const emptyState = document.getElementById('empty-state');
+  const loadMoreBtn = document.getElementById('load-more-btn');
+  const facetSidebar = document.getElementById('facet-sidebar');
+  const conceptsPanel = document.getElementById('concepts-panel');
+  const searchGrid = document.getElementById('search-grid');
+
+  let pagefind;
+  const activeFilters = { type: null, domain: null, kind: null, tag: null };
+  let currentResults = [];
+  let renderedCount = 0;
+  let currentTerm = null;
+  let chips = []; // { facet, value, btn, countEl } — built once from the initial browse-all response
+
+  let notesGraph = {}; // slug -> { title, url, topic, neighbors } — lazily fetched, see ensureNotesGraph()
+  let titleIndex = new Map(); // slug -> normalized title, precomputed alongside notesGraph
+  let notesGraphPromise = null; // memoizes ensureNotesGraph() so the 2.6MB payload is fetched at most once
+  let searchGeneration = 0; // bumped per runSearch call; guards against an older call rendering after a newer one
+  let currentAnchorSlug = null;
+  let breadcrumbTrail = []; // { slug, title }[] — the pivot chain, reset on a typed (non-pivot) search
+
+  function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function formatDate(iso) {
+    if (!iso) return '';
+    return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(iso));
+  }
+
+  // --- Facet sidebar -------------------------------------------------------
+
+  function makeChipButton(facet, value, label, count, active) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `filter-tag${active ? ' active' : ''}`;
+    btn.dataset.facet = facet;
+    btn.dataset.value = value;
+
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = label;
+    const countSpan = document.createElement('span');
+    countSpan.className = 'tag-count';
+    countSpan.textContent = String(count);
+
+    btn.append(labelSpan, countSpan);
+    btn.addEventListener('click', () => onChipClick(facet, value));
+
+    return { facet, value, btn, countEl: countSpan };
+  }
+
+  // Built once, from the totalFilters of the initial (unfiltered) browse-all
+  // search — chip values/labels stay fixed afterward, only counts update.
+  function renderFacetSidebar(totalFilters) {
+    facetSidebar.innerHTML = '';
+    chips = [];
+
+    for (const facet of ['type', 'domain', 'kind', 'tag']) {
+      const values = totalFilters[facet];
+      if (!values || Object.keys(values).length === 0) continue;
+
+      const group = document.createElement('div');
+      const label = document.createElement('h3');
+      label.className = 'eyebrow mb-3';
+      label.textContent = FACET_LABELS[facet] ?? facet;
+      group.appendChild(label);
+
+      const container = document.createElement('div');
+      container.className = `flex flex-col gap-0.5${facet === 'tag' ? ' overflow-y-auto max-h-[calc(100vh-28rem)]' : ''}`;
+
+      const entries = Object.entries(values).sort((a, b) => a[0].localeCompare(b[0]));
+      const total = entries.reduce((sum, [, count]) => sum + count, 0);
+
+      const allChip = makeChipButton(facet, '__all__', 'All', total, true);
+      container.appendChild(allChip.btn);
+      chips.push(allChip);
+
+      for (const [value, count] of entries) {
+        const chip = makeChipButton(facet, value, value, count, false);
+        container.appendChild(chip.btn);
+        chips.push(chip);
+      }
+
+      group.appendChild(container);
+      facetSidebar.appendChild(group);
+    }
+  }
+
+  function updateFacetCounts(totalFilters) {
+    for (const chip of chips) {
+      const values = totalFilters[chip.facet] ?? {};
+      const count = chip.value === '__all__'
+        ? Object.values(values).reduce((sum, c) => sum + c, 0)
+        : (values[chip.value] ?? 0);
+      chip.countEl.textContent = String(count);
+    }
+  }
+
+  function onChipClick(facet, value) {
+    activeFilters[facet] = activeFilters[facet] === value || value === '__all__' ? null : value;
+
+    chips.filter((c) => c.facet === facet).forEach((c) => {
+      const isActive = c.value === '__all__' ? activeFilters[facet] === null : activeFilters[facet] === c.value;
+      c.btn.classList.toggle('active', isActive);
+    });
+
+    runSearch(currentTerm, { immediate: true });
+  }
+
+  // --- Results ---------------------------------------------------------------
+
+  function renderSubResults(subResults) {
+    if (!subResults || subResults.length <= 1) return '';
+    const shown = subResults.slice(0, MAX_SUB_RESULTS);
+    const extra = subResults.length - shown.length;
+
+    // sub.excerpt is Pagefind-generated <mark>-highlighted HTML from this
+    // site's own indexed content, not user input — safe to inject as-is.
+    const items = shown.map((sub) => `
+      <div class="pl-3 border-l-2 border-line text-xs text-dim">
+        <span class="text-muted">${escapeHtml(sub.title)}</span> — <span class="search-excerpt">${sub.excerpt}</span>
+      </div>
+    `).join('');
+
+    const moreLine = extra > 0
+      ? `<p class="text-xs text-faint font-mono pl-3 mt-1">+${extra} more match${extra === 1 ? '' : 'es'} in this note</p>`
+      : '';
+
+    return `<div class="flex flex-col gap-2 mt-2">${items}${moreLine}</div>`;
+  }
+
+  function appendResultCard(data) {
+    const type = data.filters?.type?.[0] ?? '';
+    const domain = data.filters?.domain?.[0];
+    const tags = data.filters?.tag ?? [];
+    const date = formatDate(data.meta?.date);
+    const title = data.meta?.title ?? 'Untitled';
+
+    // data.excerpt is Pagefind-generated <mark>-highlighted HTML from this
+    // site's own indexed content, not user input — safe to inject as-is.
+    const html = `
+      <a href="${data.url.replace(/"/g, '&quot;')}" class="card group flex flex-col gap-3 no-underline hover:-translate-y-0.5">
+        <div class="flex items-center gap-2 flex-wrap text-xs font-mono">
+          <span class="tag text-[11px] py-0.5">${escapeHtml(type)}</span>
+          ${domain ? `<span class="text-dim">${escapeHtml(domain)}</span>` : ''}
+          ${date ? `<span class="text-faint">·</span><span class="text-faint">${date}</span>` : ''}
+        </div>
+        <h3 class="text-base font-medium text-ink group-hover:text-accent transition-colors leading-snug">
+          ${escapeHtml(title)}
+        </h3>
+        <div class="text-sm text-muted leading-relaxed search-excerpt">${data.excerpt}</div>
+        ${renderSubResults(data.sub_results)}
+        ${tags.length ? `<div class="flex flex-wrap gap-1.5 mt-1">${tags.map((t) => `<span class="tag text-[10px] py-0">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
+      </a>
+    `;
+    resultsList.insertAdjacentHTML('beforeend', html);
+  }
+
+  function updateResultCount(n) {
+    const noun = n === 1 ? 'result' : 'results';
+    resultCountEl.textContent = currentTerm ? `${n} ${noun} for "${currentTerm}"` : `${n} ${noun}`;
+  }
+
+  // Pagefind only returns filters/totalFilters counts for facet keys present
+  // in this object — an unconstrained facet still needs its key here (as an
+  // empty array) or its counts silently disappear from the response.
+  function buildFiltersParam() {
+    const filters = {};
+    for (const [key, value] of Object.entries(activeFilters)) {
+      filters[key] = value ? [value] : [];
+    }
+    return filters;
+  }
+
+  async function renderNextPage() {
+    const batch = currentResults.slice(renderedCount, renderedCount + PAGE_SIZE);
+    const dataList = await Promise.all(batch.map((r) => r.data()));
+    dataList.forEach(appendResultCard);
+    renderedCount += batch.length;
+    loadMoreBtn.classList.toggle('hidden', renderedCount >= currentResults.length);
+  }
+
+  async function runSearch(term, { immediate = false, pivot = false } = {}) {
+    // debouncedSearch's own null-on-supersede only covers the debounced
+    // path — an "immediate" call (chip/breadcrumb/facet-chip clicks) has no
+    // equivalent protection, so two overlapping immediate calls could
+    // otherwise resolve out of order and the older one would clobber the
+    // newer one's render. A monotonic generation counter, checked right
+    // after each await, makes any stale call a no-op instead.
+    const gen = ++searchGeneration;
+    currentTerm = term;
+    const filters = buildFiltersParam();
+    // debouncedSearch returns null when superseded by a newer keystroke.
+    const resp = immediate
+      ? await pagefind.search(term, { filters })
+      : await pagefind.debouncedSearch(term, { filters }, DEBOUNCE_MS);
+    if (!resp || gen !== searchGeneration) return;
+
+    currentResults = resp.results;
+    renderedCount = 0;
+    resultsList.innerHTML = '';
+
+    // resp.filters is the breakdown of the *current* result set across every
+    // facet — the standard drill-down/refine semantics. resp.totalFilters
+    // looks like a "preview other values" count but actually ignores every
+    // active filter except the search term, so it goes stale the moment more
+    // than one facet is constrained (and is all-zero outright when the search
+    // box is empty). filters is the only one that stays honest in all cases;
+    // the one tradeoff is a facet's own siblings read 0 once it's the active
+    // constraint, which is expected for a mutually-exclusive single-select.
+    const facetCounts = resp.filters;
+
+    if (chips.length === 0) {
+      renderFacetSidebar(facetCounts);
+    } else {
+      updateFacetCounts(facetCounts);
+    }
+
+    updateResultCount(currentResults.length);
+    emptyState.classList.toggle('hidden', currentResults.length > 0);
+    loadMoreBtn.classList.add('hidden');
+    await renderNextPage();
+
+    // A typed query is a new root, not a continuation of a pivot chain — only
+    // chip/breadcrumb clicks (pivot: true) preserve the trail.
+    if (!pivot) breadcrumbTrail = [];
+    const anchor = term ? await findAnchorEntry(currentResults, term) : null;
+    if (gen !== searchGeneration) return; // a newer call started while we were scoring the anchor
+    renderConceptsPanel(anchor);
+  }
+
+  // --- Linked concepts panel -------------------------------------------------
+
+  // Resolves Pagefind's top raw hits down to Note-type slugs, then hands off
+  // to the pure, unit-tested scoring function (src/lib/search-anchor.ts) to
+  // pick the best anchor. Pagefind caches each result's fragment after the
+  // first .data() call, so scanning ANCHOR_SCAN_LIMIT hits here doesn't
+  // double-fetch what renderNextPage already requested for the visible cards.
+  async function findAnchorEntry(results, term) {
+    await ensureNotesGraph();
+    const slice = results.slice(0, ANCHOR_SCAN_LIMIT);
+    const textHitSlugs = [];
+    if (slice.length > 0) {
+      const dataList = await Promise.all(slice.map((r) => r.data()));
+      for (const data of dataList) {
+        if (data.filters?.type?.[0] === 'Note' && data.meta?.slug) textHitSlugs.push(data.meta.slug);
+      }
+    }
+    return scoreAnchorCandidates(notesGraph, titleIndex, term, textHitSlugs);
+  }
+
+  // notes-graph.json is a ~2.6MB static build artifact — only the Linked
+  // Concepts panel (a typed-query feature) needs it, so it's fetched lazily
+  // on the first real query rather than eagerly in main() on every page load.
+  // Memoized so a session that runs multiple queries only pays for it once.
+  function ensureNotesGraph() {
+    if (!notesGraphPromise) {
+      notesGraphPromise = fetch('/notes/notes-graph.json')
+        .then((r) => r.json())
+        .then((data) => {
+          notesGraph = data;
+          titleIndex = buildTitleIndex(notesGraph);
+        })
+        .catch(() => {
+          notesGraph = {}; // Linked-concepts panel just stays hidden if this is unavailable.
+          titleIndex = new Map();
+        });
+    }
+    return notesGraphPromise;
+  }
+
+  function renderConceptsPanel(anchor) {
+    currentAnchorSlug = anchor?.slug ?? null;
+
+    if (!anchor) {
+      conceptsPanel.classList.add('hidden');
+      conceptsPanel.innerHTML = '';
+      searchGrid.classList.remove('has-concepts');
+      return;
+    }
+
+    const trailHtml = breadcrumbTrail
+      .map((c) => `<button type="button" class="crumb" data-slug="${c.slug}">${escapeHtml(c.title)}</button><span class="crumb-sep">›</span>`)
+      .join('');
+
+    // Least-connected concepts first — a low neighborCount reads as a more
+    // specific/leaf idea, a high one as a broader hub; walking low-to-high
+    // surfaces the narrow, closely-related concepts before the sprawling ones.
+    const sortedNeighbors = [...anchor.neighbors].sort((a, b) => a.neighborCount - b.neighborCount);
+
+    const treeHtml = sortedNeighbors
+      .map((n, i) => {
+        const connector = i === sortedNeighbors.length - 1 ? '└──' : '├──';
+        return `
+          <li>
+            <button type="button" class="concept-node" data-slug="${n.slug}" data-title="${escapeHtml(n.title)}">
+              <span class="tree-connector" aria-hidden="true">${connector}</span>${escapeHtml(n.title)}
+            </button>
+          </li>
+        `;
+      })
+      .join('');
+
+    conceptsPanel.innerHTML = `
+      <h3 class="eyebrow mb-3">Linked Concepts</h3>
+      <div class="breadcrumb-trail mb-3">${trailHtml}<span class="text-ink">${escapeHtml(anchor.title)}</span></div>
+      <ul class="concept-tree font-mono">${treeHtml}</ul>
+    `;
+    conceptsPanel.classList.remove('hidden');
+    searchGrid.classList.add('has-concepts');
+  }
+
+  // Event delegation: chip/crumb buttons are re-created on every render, so
+  // one listener on the stable container handles all of them.
+  conceptsPanel.addEventListener('click', (e) => {
+    const target = e.target.closest('button');
+    if (!target) return;
+
+    if (target.classList.contains('concept-node')) {
+      if (currentAnchorSlug && notesGraph[currentAnchorSlug]) {
+        breadcrumbTrail.push({ slug: currentAnchorSlug, title: notesGraph[currentAnchorSlug].title });
+      }
+      searchInput.value = target.dataset.title;
+      runSearch(target.dataset.title, { immediate: true, pivot: true });
+    } else if (target.classList.contains('crumb')) {
+      const idx = breadcrumbTrail.findIndex((c) => c.slug === target.dataset.slug);
+      if (idx === -1) return;
+      const crumb = breadcrumbTrail[idx];
+      breadcrumbTrail = breadcrumbTrail.slice(0, idx);
+      searchInput.value = crumb.title;
+      runSearch(crumb.title, { immediate: true, pivot: true });
+    }
+  });
+
+  // --- Init --------------------------------------------------------------
+
+  async function main() {
+    try {
+      // Generated by astro-pagefind into dist/pagefind/ at build time — it
+      // doesn't exist in the source tree, so this script is is:inline
+      // (unprocessed by Vite/Rollup) purely to keep this import a plain
+      // runtime browser import instead of a build-time module resolution.
+      pagefind = await import('/notes/pagefind/pagefind.js');
+      await pagefind.init();
+    } catch (e) {
+      resultCountEl.textContent = '';
+      resultsList.innerHTML =
+        '<p class="text-faint font-mono text-sm">// Search index is built after <code>npm run build</code>. Run locally with <code>npm run preview</code>.</p>';
+      return;
+    }
+
+    try {
+      // search-anchor.js.ts transpiles src/lib/search-anchor.ts at build
+      // time (esbuild) into this plain-JS, browser-importable module.
+      // notes-graph.json itself is NOT fetched here — see ensureNotesGraph().
+      ({ buildTitleIndex, scoreAnchorCandidates } = await import('/notes/search-anchor.js'));
+    } catch (e) {
+      notesGraph = {}; // Linked-concepts panel just stays hidden if this is unavailable.
+      titleIndex = new Map();
+    }
+
+    searchInput.addEventListener('input', () => {
+      const term = searchInput.value.trim();
+      runSearch(term.length ? term : null);
+    });
+    loadMoreBtn.addEventListener('click', renderNextPage);
+
+    await runSearch(null, { immediate: true });
+  }
+
+  main();
+</script>

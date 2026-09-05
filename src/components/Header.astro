@@ -1,0 +1,193 @@
+---
+// Every page in this standalone site is a Notes page — the subNavFor()-keyed
+// branching from the source portfolio monorepo (which had to pick between
+// the general-purpose PRIMARY_NAV and a per-section subnav strip) collapses
+// to one hard-coded case: always render the notes-appropriate sub-nav below
+// the brand row, never the portfolio's primary nav.
+import { NOTES_NAV } from '../data/nav';
+
+const pathname = Astro.url.pathname;
+---
+
+<header id="site-header" class="fixed top-0 left-0 right-0 z-50 transition duration-300">
+  <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+
+    <a href="/notes" class="font-mono font-medium text-sm group flex items-center gap-1.5">
+      <span class="text-faint group-hover:text-muted transition-colors">&lt;</span>
+      <span class="text-accent">amit.singh</span>
+      <span class="text-faint group-hover:text-muted transition-colors">/&gt;</span>
+    </a>
+
+    <!-- Desktop -->
+    <nav aria-label="Primary" class="hidden lg:flex items-center gap-1">
+      <button
+        id="theme-toggle-desktop"
+        class="p-2 text-muted hover:text-ink rounded-lg hover:bg-surface-hover/50 transition duration-200"
+        aria-label="Toggle light/dark theme"
+        title="Toggle theme"
+      >
+        <svg id="icon-sun-desktop" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="4" stroke-width="2"/>
+          <path stroke-linecap="round" stroke-width="2" d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+        </svg>
+        <svg id="icon-moon-desktop" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+        </svg>
+      </button>
+    </nav>
+
+    <!-- Mobile menu button -->
+    <button id="menu-btn" class="lg:hidden p-2 text-muted hover:text-ink rounded-lg hover:bg-surface-hover transition-colors" aria-label="Toggle menu" aria-controls="mobile-menu" aria-expanded="false">
+      <svg id="icon-open" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+      </svg>
+      <svg id="icon-close" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Notes sub-nav — unconditional, this whole site is /notes/* -->
+  <div data-subnav-row class="border-t border-line/60 bg-bg/80">
+    <nav aria-label="Notes" class="max-w-6xl mx-auto px-6 py-3 flex items-center gap-1.5 overflow-x-auto">
+      {NOTES_NAV.map(({ href, label }) => (
+        <a
+          href={href}
+          aria-current={pathname === href ? 'page' : undefined}
+          class={`px-[14px] py-[7px] text-sm font-mono rounded-lg transition duration-200 whitespace-nowrap ${
+            pathname === href
+              ? 'text-accent bg-accent/10'
+              : 'text-muted hover:text-ink hover:bg-surface-hover/50'
+          }`}
+        >
+          {label}
+        </a>
+      ))}
+    </nav>
+  </div>
+
+  <!-- Mobile menu -->
+  <div id="mobile-menu" class="hidden lg:hidden bg-bg/98 border-t border-line">
+    <nav aria-label="Notes" class="max-w-6xl mx-auto px-6 py-4 flex flex-col gap-1">
+      {NOTES_NAV.map(({ href, label }) => (
+        <a
+          href={href}
+          class="px-4 py-3 text-sm text-body hover:text-ink hover:bg-surface-hover/50 rounded-lg transition-colors"
+        >
+          {label}
+        </a>
+      ))}
+      <button
+        id="theme-toggle-mobile"
+        class="flex items-center gap-2 px-4 py-3 text-sm text-body hover:text-ink hover:bg-surface-hover/50 rounded-lg transition-colors text-left"
+      >
+        <svg id="icon-sun-mobile" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="4" stroke-width="2"/>
+          <path stroke-linecap="round" stroke-width="2" d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+        </svg>
+        <svg id="icon-moon-mobile" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+        </svg>
+        <span id="theme-toggle-label">Toggle theme</span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<style>
+  #icon-moon-desktop,
+  #icon-moon-mobile {
+    display: none;
+  }
+  :global([data-theme='light']) #icon-sun-desktop,
+  :global([data-theme='light']) #icon-sun-mobile {
+    display: none;
+  }
+  :global([data-theme='light']) #icon-moon-desktop,
+  :global([data-theme='light']) #icon-moon-mobile {
+    display: block;
+  }
+</style>
+
+<script>
+const header = document.getElementById('site-header');
+const btn = document.getElementById('menu-btn');
+const menu = document.getElementById('mobile-menu');
+const iconOpen = document.getElementById('icon-open');
+const iconClose = document.getElementById('icon-close');
+
+let menuOpen = false;
+
+// rAF-throttled: the raw scroll event fires far more often than paint, and
+// each call touched multiple classes. Coalesce to one class update per frame.
+const SCROLLED_CLASSES = [
+  'bg-bg/95', 'backdrop-blur-md', 'border-b', 'border-line/60',
+];
+let scrollTicking = false;
+function syncHeader() {
+  const scrolled = window.scrollY > 20;
+  SCROLLED_CLASSES.forEach((c) => header?.classList.toggle(c, scrolled));
+  scrollTicking = false;
+}
+window.addEventListener('scroll', () => {
+  if (!scrollTicking) {
+    scrollTicking = true;
+    requestAnimationFrame(syncHeader);
+  }
+}, { passive: true });
+
+// Lightweight disclosure — not a modal: focus isn't trapped inside the open
+// menu (acceptable for a short nav list), but the button reflects state via
+// aria-expanded, Escape closes it, focus moves in on open and back to the
+// button on close, and background scroll is locked while it's open.
+function setMenu(open: boolean, { restoreFocus = true } = {}) {
+  menuOpen = open;
+  menu?.classList.toggle('hidden', !open);
+  iconOpen?.classList.toggle('hidden', open);
+  iconClose?.classList.toggle('hidden', !open);
+  btn?.setAttribute('aria-expanded', String(open));
+  document.body.style.overflow = open ? 'hidden' : '';
+  if (open) menu?.querySelector('a')?.focus();
+  else if (restoreFocus) btn?.focus();
+}
+
+btn?.addEventListener('click', () => setMenu(!menuOpen));
+
+// Nav-link clicks navigate away (or jump to an anchor) — just close, don't
+// yank focus back to the button.
+menu?.querySelectorAll('a').forEach((a) =>
+  a.addEventListener('click', () => setMenu(false, { restoreFocus: false }))
+);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && menuOpen) setMenu(false);
+});
+
+// Resizing up to the desktop breakpoint (lg) hides the menu via CSS — clear the
+// scroll lock so it can't get stranded.
+window.matchMedia('(min-width: 1024px)').addEventListener('change', (e) => {
+  if (e.matches && menuOpen) setMenu(false, { restoreFocus: false });
+});
+
+// Theme toggle — raw localStorage (not storage.ts) to match the key/format
+// the synchronous pre-paint init script in Base.astro reads, since that
+// script can't import an ES module. Dispatches `themechange` so pages with
+// JS-embedded colors (Mermaid, the notes graph SVG) can re-apply their
+// theme-keyed palettes live, without a reload.
+const THEME_KEY = 'theme';
+function currentTheme() {
+  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+}
+function applyTheme(theme: 'light' | 'dark') {
+  if (theme === 'light') document.documentElement.dataset.theme = 'light';
+  else delete document.documentElement.dataset.theme;
+  try { localStorage.setItem(THEME_KEY, theme); } catch {}
+  window.dispatchEvent(new CustomEvent('themechange', { detail: { theme } }));
+}
+document.getElementById('theme-toggle-desktop')?.addEventListener('click', () => {
+  applyTheme(currentTheme() === 'light' ? 'dark' : 'light');
+});
+document.getElementById('theme-toggle-mobile')?.addEventListener('click', () => {
+  applyTheme(currentTheme() === 'light' ? 'dark' : 'light');
+});
+</script>

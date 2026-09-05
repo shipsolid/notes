@@ -1,0 +1,11 @@
+# Astro's generated type-cache dir — regenerated on every `astro dev`/`astro build`,
+# so tracking it just produces noise diffs whenever content collections change shape.
+.astro/
+
+# Build output.
+dist/
+
+node_modules/
+
+# Local dev env.
+.env
