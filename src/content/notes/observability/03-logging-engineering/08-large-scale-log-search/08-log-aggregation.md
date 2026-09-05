@@ -94,7 +94,7 @@ entire cost-control lever, rather than one lever among several.
 
 A log line's value multiplies enormously once it can be found _from_ a trace, not just searched for
 directly — see [[03-cross-signal-correlation]] for the mechanism (a shared `trace_id`, attached to
-the log at write time). [[correlation|Log-to-Trace Correlation]] walks through a concrete, real
+the log at write time). SignalForge's [Log-to-Trace Correlation](https://shipsolid.github.io/signal-forge/observability/correlation/) walks through a concrete, real
 implementation of exactly that: extracting `trace_id`/`span_id` at the collection layer and
 attaching them as Loki structured metadata, purely so "logs for this span" can be a one-click jump
 rather than a manual search.

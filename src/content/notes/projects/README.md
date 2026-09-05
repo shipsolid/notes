@@ -14,7 +14,7 @@ noteType: moc
 > opposite: each entry below documents one real (or lab-run) system end to end — architecture,
 > services, deployment, operations — as it actually exists, not as a general pattern.
 
-## [[projects/app-signal-forge/readme|SignalForge]]
+## [SignalForge](https://shipsolid.github.io/signal-forge/)
 
 The OTel Microservices Validation Lab — a multi-service reference application (.NET 8 gRPC/API
 services, a Python FastAPI consumer, an Angular 17 SPA) built specifically to validate an

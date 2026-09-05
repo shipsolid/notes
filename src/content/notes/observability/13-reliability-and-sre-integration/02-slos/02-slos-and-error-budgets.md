@@ -107,7 +107,7 @@ correspond to what any real user experienced.
 
 ## What this looks like in practice
 
-[[slos|SignalForge's SLOs & burn-rate alerts]] is a real, complete worked example — published SLOs,
+[SignalForge's SLOs & burn-rate alerts](https://shipsolid.github.io/signal-forge/observability/slos/) is a real, complete worked example — published SLOs,
 SLIs computed from span metrics, and the actual multi-window burn-rate alert structure behind them.
 For the platform-scale version — a registry tracking SLOs across every service rather than one — see
 [[slo-registry|SLO Registry]]. [[02-service-level-indicators-slis|Service Level Indicators (SLIs)]]

@@ -41,7 +41,7 @@ cross-cutting platform phase like the sections above.
 
 | Application                        | What lives here |
 | ---------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| [[projects/app-signal-forge/readme | signal-forge]]  | Full docs for the signal-forge OTel microservices validation lab — architecture, services, API, deployment, observability, ops runbooks, ADRs |
+| [signal-forge](https://shipsolid.github.io/signal-forge/) | Full docs for the signal-forge OTel microservices validation lab — architecture, services, API, deployment, observability, ops runbooks, ADRs |
 
 ## Conventions
 

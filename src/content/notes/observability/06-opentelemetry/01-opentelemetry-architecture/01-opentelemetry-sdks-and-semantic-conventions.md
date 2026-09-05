@@ -135,8 +135,8 @@ traces usable together at all, rather than three siloed tools.
 
 ## What this looks like in a real service
 
-SignalForge's [[otel-patterns|Instrumentation Reference]] and
-[[otel-contracts|OTel Signal Contracts]] document every instrumentation decision for a real (lab)
+SignalForge's [Instrumentation Reference](https://shipsolid.github.io/signal-forge/otel-patterns/) and
+[OTel Signal Contracts](https://shipsolid.github.io/signal-forge/observability/otel-contracts/) document every instrumentation decision for a real (lab)
 service end to end — Resource attributes, span naming, which attributes are custom vs.
 semconv-standard.
 

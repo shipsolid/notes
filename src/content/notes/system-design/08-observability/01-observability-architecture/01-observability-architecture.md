@@ -49,7 +49,7 @@ profiles, and events) and what each is built to capture.
 
 Naming metrics/logs/traces as three separate tools is a monitoring answer, not an architecture
 answer. The signals have to share a correlation key — a trace ID propagated across every hop, an
-[[exemplars|exemplar]] linking a metric spike back to one representative trace — or three
+exemplar linking a metric spike back to one representative trace — or three
 well-instrumented pillars are still three disconnected monitoring tools bolted together. This is the
 single most common gap between a senior-level and a principal-level design: a senior candidate lists
 the three pillars; a principal candidate explains how a metric spike gets a responder to the one
