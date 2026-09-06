@@ -1404,33 +1404,6 @@
 │   │       └── 13-further-reading.md
 │   └── README.md
 ├── dir-tree.txt
-├── gita
-│   ├── README.md
-│   └── concepts
-│       ├── abhyasa.md
-│       ├── akshara.md
-│       ├── atman.md
-│       ├── avatara.md
-│       ├── avyakta.md
-│       ├── bhakti.md
-│       ├── daivasura-sampad.md
-│       ├── dharma.md
-│       ├── dhyana.md
-│       ├── gunatraya.md
-│       ├── karma.md
-│       ├── kshetra-kshetrajna.md
-│       ├── maya.md
-│       ├── purushottama.md
-│       ├── raja-vidya.md
-│       ├── sannyasa.md
-│       ├── shraddha-traya.md
-│       ├── sthitaprajna.md
-│       ├── tyaga.md
-│       ├── vibhuti.md
-│       ├── vishada.md
-│       ├── vishvarupa.md
-│       ├── yajna.md
-│       └── yoga.md
 ├── grafana-cloud
 │   ├── 00-platform-foundations
 │   │   ├── 01-introduction-to-grafana-cloud
@@ -4072,63 +4045,6 @@
 │       └── thought-leadership.md
 ├── projects
 │   ├── README.md
-│   ├── app-signal-forge
-│   │   ├── README.md
-│   │   ├── api
-│   │   │   ├── grpc.md
-│   │   │   └── rest.md
-│   │   ├── architecture
-│   │   │   ├── adrs
-│   │   │   │   ├── adr-dead-letter-queue-for-poison-messages.md
-│   │   │   │   ├── adr-fail-fast-on-missing-secrets.md
-│   │   │   │   ├── adr-grpc-streaming-via-asasyncenumerable.md
-│   │   │   │   ├── adr-helm-managed-alloy-stack.md
-│   │   │   │   ├── adr-k8s-attribute-enrichment-at-collector.md
-│   │   │   │   ├── adr-log-tailing-not-otlp-export.md
-│   │   │   │   ├── adr-secretkeyref-for-credentials.md
-│   │   │   │   ├── adr-separate-collector-configmaps-per-mode.md
-│   │   │   │   ├── adr-span-metrics-before-tail-sampling.md
-│   │   │   │   └── adr-spanlink-for-async-rabbitmq.md
-│   │   │   └── overview.md
-│   │   ├── deployment
-│   │   │   ├── grafana-cloud.md
-│   │   │   ├── helm.md
-│   │   │   └── local.md
-│   │   ├── guides
-│   │   │   ├── README.md
-│   │   │   ├── collector-pipeline-setup.md
-│   │   │   ├── dotnet-instrumentation.md
-│   │   │   ├── frontend-rum-instrumentation.md
-│   │   │   └── python-instrumentation.md
-│   │   ├── infrastructure
-│   │   │   ├── datastore-ha.md
-│   │   │   ├── datastores.md
-│   │   │   ├── hardening.md
-│   │   │   ├── kubernetes.md
-│   │   │   └── kustomize.md
-│   │   ├── observability
-│   │   │   ├── correlation.md
-│   │   │   ├── exemplars.md
-│   │   │   ├── otel-contracts.md
-│   │   │   ├── pipeline.md
-│   │   │   ├── sampling.md
-│   │   │   └── slos.md
-│   │   ├── operations
-│   │   │   ├── known-issues.md
-│   │   │   ├── networking.md
-│   │   │   ├── reliability.md
-│   │   │   ├── resilience-patterns.md
-│   │   │   ├── runbooks.md
-│   │   │   ├── security.md
-│   │   │   └── supply-chain.md
-│   │   ├── otel-patterns.md
-│   │   ├── services
-│   │   │   ├── frontend.md
-│   │   │   ├── gateway-api.md
-│   │   │   ├── notification-svc.md
-│   │   │   └── order-api.md
-│   │   ├── spec.md
-│   │   └── testing.md
 │   └── platform-shipsolid
 │       ├── 00-start-here
 │       │   ├── engagement-model.md
@@ -5045,4 +4961,4 @@
     │       └── 10-principal-engineer-interview-prep.md
     └── README.md
 
-2518 directories, 2528 files
+2506 directories, 2456 files
